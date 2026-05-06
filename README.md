@@ -1,5 +1,4 @@
-<<<<<<< HEAD
-# grocereasetest
+# GrocerEase
 
 A new Flutter project.
 
