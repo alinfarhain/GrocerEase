@@ -1,22 +1,11 @@
-// ─────────────────────────────────────────────
-//  grocery_list_screen.dart  (updated)
-//  Changes:
-//   • "By Recipe" toggle now actually groups & renders items by recipe
-//   • Currency symbol passed from AppCurrency (consistent everywhere)
-//   • GroceryItemTile now receives currencySymbol & userDietaryPreference
-//   • Sample data extended with recipe, unit, quantityAmount, dietaryTags
-// ─────────────────────────────────────────────
-
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../models/grocery_item.dart';
 import '../widgets/grocery_item_tile.dart';
 import '../widgets/progress_card.dart';
 import '../widgets/add_item_sheet.dart';
 
 class GroceryListScreen extends StatefulWidget {
-  /// These two values are fed down from the profile / app state.
-  /// In a real app you'd use Provider / Riverpod; here they're passed
-  /// as constructor parameters to keep the diff minimal.
   final AppCurrency currency;
   final String dietaryPreference;
 
@@ -33,9 +22,10 @@ class GroceryListScreen extends StatefulWidget {
 
 class _GroceryListScreenState extends State<GroceryListScreen> {
   bool _showByRecipe = false;
+  bool _isEditMode = false;
   final double _budget = 115.00;
 
-  // ── Sample data (extended with recipe / unit / dietaryTags) ──────────
+  // ── Sample data ──────────────────────────────────────────────────────
   final List<GroceryCategory> _categories = [
     GroceryCategory(
       name: 'Produce',
@@ -66,6 +56,8 @@ class _GroceryListScreenState extends State<GroceryListScreen> {
           id: '3',
           name: 'Spinach',
           quantity: '1 bunch',
+          quantityAmount: 1,
+          unit: 'bunch',
           price: 2.50,
           category: 'Produce',
           recipe: 'Pasta Arrabbiata',
@@ -86,7 +78,6 @@ class _GroceryListScreenState extends State<GroceryListScreen> {
           price: 7.00,
           category: 'Meat & Seafood',
           recipe: 'Chicken Stir Fry',
-          // No Halal tag — will trigger warning for Halal users
           dietaryTags: ['Meat'],
         ),
         GroceryItem(
@@ -144,6 +135,8 @@ class _GroceryListScreenState extends State<GroceryListScreen> {
           id: '9',
           name: 'Tortillas',
           quantity: '1 pack',
+          quantityAmount: 1,
+          unit: 'pack',
           price: 3.50,
           category: 'Dry Goods',
           dietaryTags: ['Vegan', 'Halal'],
@@ -152,21 +145,17 @@ class _GroceryListScreenState extends State<GroceryListScreen> {
     ),
   ];
 
-  // ── Helpers ───────────────────────────────────────────────────────────
+  // ── Computed helpers ──────────────────────────────────────────────────
   List<GroceryItem> get _allItems =>
       _categories.expand((c) => c.items).toList();
-
   int get _checkedCount => _allItems.where((i) => i.isChecked).length;
   int get _totalCount => _allItems.length;
   int get _remainingCount => _totalCount - _checkedCount;
-
   double get _spentTotal =>
       _allItems.where((i) => i.isChecked).fold(0.0, (s, i) => s + i.price);
-
   String get _sym => widget.currency.symbol;
   String get _diet => widget.dietaryPreference;
 
-  /// Build recipe groups from the flat item list (NEW).
   List<GroceryRecipe> get _recipeGroups {
     final map = <String, List<GroceryItem>>{};
     for (final item in _allItems) {
@@ -183,6 +172,15 @@ class _GroceryListScreenState extends State<GroceryListScreen> {
   void _toggleItem(GroceryItem item) =>
       setState(() => item.isChecked = !item.isChecked);
 
+  void _deleteItem(GroceryItem item) {
+    setState(() {
+      for (final cat in _categories) {
+        cat.items.removeWhere((i) => i.id == item.id);
+      }
+      _categories.removeWhere((c) => c.items.isEmpty);
+    });
+  }
+
   void _addItem(
       String name, String quantity, double price, String category) {
     setState(() {
@@ -194,26 +192,249 @@ class _GroceryListScreenState extends State<GroceryListScreen> {
         category: category,
       );
       final cat = _categories.firstWhere(
-            (c) => c.name == category,
+        (c) => c.name == category,
         orElse: () {
-          final newCat = GroceryCategory(name: category, items: []);
-          _categories.add(newCat);
-          return newCat;
+          final nc = GroceryCategory(name: category, items: []);
+          _categories.add(nc);
+          return nc;
         },
       );
       cat.items.add(newItem);
     });
   }
 
-  void _deleteItem(GroceryItem item) {
-    setState(() {
-      for (final cat in _categories) {
-        cat.items.removeWhere((i) => i.id == item.id);
-      }
-      _categories.removeWhere((c) => c.items.isEmpty);
-    });
+  // ── Edit mode ─────────────────────────────────────────────────────────
+  void _toggleEditMode() => setState(() => _isEditMode = !_isEditMode);
+
+  String _calcPPU(double price, double? qty, String? unit) {
+    if (qty == null || qty <= 0 || unit == null || unit.trim().isEmpty) {
+      return '';
+    }
+    return '$_sym${(price / qty).toStringAsFixed(2)} / ${unit.trim()}';
   }
 
+  void _showEditItemSheet(GroceryItem item) {
+    final nameCtrl = TextEditingController(text: item.name);
+    final qtyCtrl =
+        TextEditingController(text: item.quantityAmount?.toString() ?? '');
+    final unitCtrl = TextEditingController(text: item.unit ?? '');
+    final priceCtrl =
+        TextEditingController(text: item.price.toStringAsFixed(2));
+
+    final ppuNotifier = ValueNotifier<String>(
+        _calcPPU(item.price, item.quantityAmount, item.unit));
+
+    void refreshPPU() {
+      final p = double.tryParse(priceCtrl.text) ?? 0;
+      final q = double.tryParse(qtyCtrl.text);
+      ppuNotifier.value = _calcPPU(p, q, unitCtrl.text);
+    }
+
+    priceCtrl.addListener(refreshPPU);
+    qtyCtrl.addListener(refreshPPU);
+    unitCtrl.addListener(refreshPPU);
+
+    final inputBorder = OutlineInputBorder(
+      borderRadius: BorderRadius.circular(12),
+      borderSide: const BorderSide(color: Color(0xFFE0E0E0)),
+    );
+    final focusBorder = OutlineInputBorder(
+      borderRadius: BorderRadius.circular(12),
+      borderSide: const BorderSide(color: Color(0xFF2E7D32), width: 2),
+    );
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Padding(
+        padding:
+            EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
+        child: Container(
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          padding: const EdgeInsets.fromLTRB(24, 16, 24, 28),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Drag handle
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade300,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              const Text('Edit Item',
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700)),
+              const SizedBox(height: 20),
+              // Item name
+              TextField(
+                controller: nameCtrl,
+                decoration: InputDecoration(
+                  labelText: 'Item Name',
+                  border: inputBorder,
+                  focusedBorder: focusBorder,
+                ),
+              ),
+              const SizedBox(height: 12),
+              // Quantity + Unit
+              Row(children: [
+                Expanded(
+                  child: TextField(
+                    controller: qtyCtrl,
+                    keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true),
+                    decoration: InputDecoration(
+                      labelText: 'Quantity',
+                      border: inputBorder,
+                      focusedBorder: focusBorder,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: TextField(
+                    controller: unitCtrl,
+                    decoration: InputDecoration(
+                      labelText: 'Unit (kg, pcs…)',
+                      border: inputBorder,
+                      focusedBorder: focusBorder,
+                    ),
+                  ),
+                ),
+              ]),
+              const SizedBox(height: 12),
+              // Price + live per-unit display
+              Row(children: [
+                Expanded(
+                  child: TextField(
+                    controller: priceCtrl,
+                    keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true),
+                    decoration: InputDecoration(
+                      labelText: 'Price',
+                      prefixText: _sym,
+                      border: inputBorder,
+                      focusedBorder: focusBorder,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: ValueListenableBuilder<String>(
+                    valueListenable: ppuNotifier,
+                    builder: (_, ppu, __) => Container(
+                      height: 56,
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFE8F5E9),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: const Color(0xFFCCE5CC)),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Text('Per unit',
+                              style: TextStyle(fontSize: 11, color: Colors.grey)),
+                          Text(
+                            ppu.isEmpty ? '—' : ppu,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFF2E7D32),
+                              fontSize: 13,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ]),
+              const SizedBox(height: 20),
+              SizedBox(
+                width: double.infinity,
+                height: 52,
+                child: ElevatedButton(
+                  onPressed: () {
+                    setState(() {
+                      final n = nameCtrl.text.trim();
+                      if (n.isNotEmpty) item.name = n;
+                      item.price =
+                          double.tryParse(priceCtrl.text) ?? item.price;
+                      final qty = double.tryParse(qtyCtrl.text);
+                      item.quantityAmount = qty;
+                      final u = unitCtrl.text.trim();
+                      item.unit = u.isEmpty ? null : u;
+                      if (qty != null) {
+                        final qStr = qty == qty.roundToDouble()
+                            ? qty.round().toString()
+                            : qty.toStringAsFixed(1);
+                        item.quantity = u.isNotEmpty ? '$qStr $u' : qStr;
+                      }
+                    });
+                    Navigator.pop(ctx);
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF2E7D32),
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14)),
+                    elevation: 0,
+                  ),
+                  child: const Text('Save Changes',
+                      style: TextStyle(
+                          fontSize: 16, fontWeight: FontWeight.w600)),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ── Share ─────────────────────────────────────────────────────────────
+  void _shareList() {
+    final buf = StringBuffer();
+    buf.writeln('🛒 Grocery List');
+    buf.writeln('$_remainingCount item(s) remaining\n');
+    for (final cat in _categories) {
+      if (cat.items.isEmpty) continue;
+      buf.writeln('── ${cat.name} ──');
+      for (final i in cat.items) {
+        final tick = i.isChecked ? '✓' : '☐';
+        buf.writeln(
+            '$tick ${i.name} (${i.quantity})  $_sym${i.price.toStringAsFixed(2)}');
+      }
+      buf.writeln();
+    }
+    final grand = _allItems.fold(0.0, (s, i) => s + i.price).toStringAsFixed(2);
+    buf.writeln('Total: $_sym$grand');
+    buf.writeln(
+        'Spent: $_sym${_spentTotal.toStringAsFixed(2)} / Budget: $_sym${_budget.toStringAsFixed(2)}');
+
+    Clipboard.setData(ClipboardData(text: buf.toString()));
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('📋 Grocery list copied to clipboard!'),
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: Color(0xFF2E7D32),
+        duration: Duration(seconds: 2),
+      ),
+    );
+  }
+
+  // ── Add item ──────────────────────────────────────────────────────────
   void _showAddItemSheet() {
     showModalBottomSheet(
       context: context,
@@ -233,45 +454,37 @@ class _GroceryListScreenState extends State<GroceryListScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFFF3F8F3),
       body: SafeArea(
-        child: Column(
-          children: [
-            _buildHeader(),
-            Expanded(
-              child: ListView(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                children: [
-                  const SizedBox(height: 12),
-                  ProgressCard(
-                    spentTotal: _spentTotal,
-                    budget: _budget,
-                    checkedCount: _checkedCount,
-                    totalCount: _totalCount,
-                    currencySymbol: _sym,
-                  ),
-                  const SizedBox(height: 16),
-                  _buildToggle(),
-                  const SizedBox(height: 20),
-                  // ── Render by category OR by recipe ────────────
-                  if (_showByRecipe)
-                    ..._buildRecipeList()
-                  else
-                    ..._buildCategoryList(),
-                  const SizedBox(height: 16),
-                  _buildAddCustomButton(),
-                  const SizedBox(height: 24),
-                ],
-              ),
+        child: Column(children: [
+          _buildHeader(),
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
+              children: [
+                ProgressCard(
+                  checkedCount: _checkedCount,
+                  totalCount: _totalCount,
+                  spentTotal: _spentTotal,
+                  budget: _budget,
+                  currencySymbol: _sym,
+                ),
+                const SizedBox(height: 16),
+                _buildToggle(),
+                const SizedBox(height: 16),
+                ...(_showByRecipe ? _buildRecipeList() : _buildCategoryList()),
+                const SizedBox(height: 8),
+                _buildAddCustomButton(),
+                const SizedBox(height: 80),
+              ],
             ),
-          ],
-        ),
+          ),
+        ]),
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: _showAddItemSheet,
         backgroundColor: const Color(0xFFE86E28),
         shape: const CircleBorder(),
         elevation: 4,
-        child:
-        const Icon(Icons.crop_free, color: Colors.white, size: 26),
+        child: const Icon(Icons.crop_free, color: Colors.white, size: 26),
       ),
     );
   }
@@ -280,74 +493,84 @@ class _GroceryListScreenState extends State<GroceryListScreen> {
   Widget _buildHeader() {
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 16, 16, 8),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Grocery List',
-                  style: TextStyle(
-                    fontSize: 28,
-                    fontWeight: FontWeight.w700,
-                    color: Color(0xFF1A1A1A),
-                    letterSpacing: -0.5,
-                  ),
+      child: Row(children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Grocery List',
+                style: TextStyle(
+                  fontSize: 28,
+                  fontWeight: FontWeight.w700,
+                  color: _isEditMode
+                      ? const Color(0xFF2E7D32)
+                      : const Color(0xFF1A1A1A),
+                  letterSpacing: -0.5,
                 ),
-                const SizedBox(height: 2),
-                Text(
-                  '$_remainingCount items remaining',
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: Colors.grey.shade600,
-                    fontWeight: FontWeight.w400,
-                  ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                _isEditMode
+                    ? 'Tap ✏️ on an item to edit'
+                    : '$_remainingCount items remaining',
+                style: TextStyle(
+                  fontSize: 13,
+                  color: _isEditMode ? const Color(0xFF2E7D32) : Colors.grey.shade600,
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
-          _headerButton(Icons.share_outlined, 'Share'),
-          const SizedBox(width: 8),
-          _headerButton(Icons.edit_outlined, 'Edit', withLabel: true),
-        ],
-      ),
+        ),
+        _headerBtn(Icons.share_outlined, 'Share', _shareList),
+        const SizedBox(width: 8),
+        _headerBtn(
+          _isEditMode ? Icons.check_outlined : Icons.edit_outlined,
+          _isEditMode ? 'Done' : 'Edit',
+          _toggleEditMode,
+          withLabel: true,
+          active: _isEditMode,
+        ),
+      ]),
     );
   }
 
-  Widget _headerButton(IconData icon, String label,
-      {bool withLabel = false}) {
+  Widget _headerBtn(
+    IconData icon,
+    String label,
+    VoidCallback onTap, {
+    bool withLabel = false,
+    bool active = false,
+  }) {
     return Container(
       decoration: BoxDecoration(
-        color: const Color(0xFFE8F5E9),
+        color: active ? const Color(0xFF2E7D32) : const Color(0xFFE8F5E9),
         borderRadius: BorderRadius.circular(20),
-        border:
-        Border.all(color: const Color(0xFFCCE5CC), width: 1),
+        border: Border.all(
+            color: active ? const Color(0xFF2E7D32) : const Color(0xFFCCE5CC)),
       ),
       child: Material(
         color: Colors.transparent,
         child: InkWell(
           borderRadius: BorderRadius.circular(20),
-          onTap: () {},
+          onTap: onTap,
           child: Padding(
             padding: EdgeInsets.symmetric(
-              horizontal: withLabel ? 14 : 10,
-              vertical: 8,
-            ),
+                horizontal: withLabel ? 14 : 10, vertical: 8),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(icon, size: 18, color: const Color(0xFF2E7D32)),
+                Icon(icon,
+                    size: 18,
+                    color: active ? Colors.white : const Color(0xFF2E7D32)),
                 if (withLabel) ...[
                   const SizedBox(width: 4),
-                  const Text(
-                    'Edit',
-                    style: TextStyle(
-                      color: Color(0xFF2E7D32),
-                      fontWeight: FontWeight.w600,
-                      fontSize: 14,
-                    ),
-                  ),
+                  Text(label,
+                      style: TextStyle(
+                        color: active ? Colors.white : const Color(0xFF2E7D32),
+                        fontWeight: FontWeight.w600,
+                        fontSize: 14,
+                      )),
                 ],
               ],
             ),
@@ -365,17 +588,15 @@ class _GroceryListScreenState extends State<GroceryListScreen> {
         color: const Color(0xFFE8F5E9),
         borderRadius: BorderRadius.circular(12),
       ),
-      child: Row(
-        children: [
-          _toggleOption('All Items', Icons.format_list_bulleted, false),
-          _toggleOption('By Recipe', Icons.restaurant_outlined, true),
-        ],
-      ),
+      child: Row(children: [
+        _toggleOpt('All Items', Icons.format_list_bulleted, false),
+        _toggleOpt('By Recipe', Icons.restaurant_outlined, true),
+      ]),
     );
   }
 
-  Widget _toggleOption(String label, IconData icon, bool isRecipe) {
-    final isSelected = _showByRecipe == isRecipe;
+  Widget _toggleOpt(String label, IconData icon, bool isRecipe) {
+    final sel = _showByRecipe == isRecipe;
     return Expanded(
       child: GestureDetector(
         onTap: () => setState(() => _showByRecipe = isRecipe),
@@ -383,41 +604,30 @@ class _GroceryListScreenState extends State<GroceryListScreen> {
           duration: const Duration(milliseconds: 200),
           margin: const EdgeInsets.all(4),
           decoration: BoxDecoration(
-            color: isSelected ? Colors.white : Colors.transparent,
+            color: sel ? Colors.white : Colors.transparent,
             borderRadius: BorderRadius.circular(8),
-            boxShadow: isSelected
+            boxShadow: sel
                 ? [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.06),
-                blurRadius: 4,
-                offset: const Offset(0, 1),
-              ),
-            ]
+                    BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.06),
+                        blurRadius: 4,
+                        offset: const Offset(0, 1))
+                  ]
                 : null,
           ),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(
-                icon,
-                size: 16,
-                color: isSelected
-                    ? const Color(0xFF1A1A1A)
-                    : Colors.grey.shade500,
-              ),
+              Icon(icon,
+                  size: 16,
+                  color: sel ? const Color(0xFF1A1A1A) : Colors.grey.shade500),
               const SizedBox(width: 6),
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: isSelected
-                      ? FontWeight.w600
-                      : FontWeight.w400,
-                  color: isSelected
-                      ? const Color(0xFF1A1A1A)
-                      : Colors.grey.shade500,
-                ),
-              ),
+              Text(label,
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: sel ? FontWeight.w600 : FontWeight.w400,
+                    color: sel ? const Color(0xFF1A1A1A) : Colors.grey.shade500,
+                  )),
             ],
           ),
         ),
@@ -425,121 +635,92 @@ class _GroceryListScreenState extends State<GroceryListScreen> {
     );
   }
 
-  // ── Category list (unchanged logic, updated tile params) ──────────────
+  // ── Category list ─────────────────────────────────────────────────────
   List<Widget> _buildCategoryList() {
-    final widgets = <Widget>[];
-    for (final category in _categories) {
-      if (category.items.isEmpty) continue;
-      widgets.add(_buildSectionHeader(category.name));
-      widgets.add(const SizedBox(height: 10));
-      for (final item in category.items) {
-        widgets.add(_buildTile(item));
-        widgets.add(const SizedBox(height: 8));
+    final out = <Widget>[];
+    for (final cat in _categories) {
+      if (cat.items.isEmpty) continue;
+      out.add(_sectionHeader(cat.name));
+      out.add(const SizedBox(height: 10));
+      for (final item in cat.items) {
+        out.add(_buildTile(item));
+        out.add(const SizedBox(height: 8));
       }
-      widgets.add(const SizedBox(height: 8));
+      out.add(const SizedBox(height: 8));
     }
-    return widgets;
+    return out;
   }
 
-  // ── Recipe list (NEW — fixes the broken "By Recipe" toggle) ──────────
+  // ── Recipe list ───────────────────────────────────────────────────────
   List<Widget> _buildRecipeList() {
-    final widgets = <Widget>[];
+    final out = <Widget>[];
     final recipes = _recipeGroups;
-
     if (recipes.isEmpty) {
-      widgets.add(
-        Center(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 40),
-            child: Text(
-              'No recipe-linked items yet.',
-              style: TextStyle(color: Colors.grey.shade500, fontSize: 15),
-            ),
-          ),
+      out.add(Center(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 40),
+          child: Text('No recipe-linked items yet.',
+              style: TextStyle(color: Colors.grey.shade500, fontSize: 15)),
         ),
-      );
-      return widgets;
+      ));
+      return out;
     }
-
     for (final recipe in recipes) {
-      // Recipe header with item count badge
-      widgets.add(_buildRecipeHeader(recipe));
-      widgets.add(const SizedBox(height: 10));
+      out.add(_recipeHeader(recipe));
+      out.add(const SizedBox(height: 10));
       for (final item in recipe.items) {
-        widgets.add(_buildTile(item));
-        widgets.add(const SizedBox(height: 8));
+        out.add(_buildTile(item));
+        out.add(const SizedBox(height: 8));
       }
-      widgets.add(const SizedBox(height: 12));
+      out.add(const SizedBox(height: 12));
     }
-    return widgets;
+    return out;
   }
 
-  Widget _buildRecipeHeader(GroceryRecipe recipe) {
-    final checkedInRecipe = recipe.items.where((i) => i.isChecked).length;
-    final totalInRecipe = recipe.items.length;
-    final recipeTotal =
-    recipe.items.fold(0.0, (s, i) => s + i.price);
-
-    return Row(
-      children: [
-        const Icon(Icons.restaurant_outlined,
-            size: 18, color: Color(0xFF2E7D32)),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Text(
-            recipe.name,
+  Widget _recipeHeader(GroceryRecipe recipe) {
+    final checked = recipe.items.where((i) => i.isChecked).length;
+    final total = recipe.items.length;
+    final sub = recipe.items.fold(0.0, (s, i) => s + i.price);
+    return Row(children: [
+      const Icon(Icons.restaurant_outlined, size: 18, color: Color(0xFF2E7D32)),
+      const SizedBox(width: 8),
+      Expanded(
+        child: Text(recipe.name,
             style: const TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w700,
-              color: Color(0xFF2E7D32),
-              letterSpacing: -0.2,
-            ),
-          ),
-        ),
-        // Checked count
-        Container(
-          padding:
-          const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-          decoration: BoxDecoration(
-            color: const Color(0xFFE8F5E9),
-            borderRadius: BorderRadius.circular(20),
-          ),
-          child: Text(
-            '$checkedInRecipe/$totalInRecipe',
-            style: const TextStyle(
-              fontSize: 12,
-              color: Color(0xFF2E7D32),
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ),
-        const SizedBox(width: 8),
-        // Recipe subtotal
-        Text(
-          '$_sym${recipeTotal.toStringAsFixed(2)}',
-          style: const TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w600,
-            color: Color(0xFF1A1A1A),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildSectionHeader(String name) {
-    return Text(
-      name,
-      style: const TextStyle(
-        fontSize: 18,
-        fontWeight: FontWeight.w700,
-        color: Color(0xFF2E7D32),
-        letterSpacing: -0.2,
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+                color: Color(0xFF2E7D32))),
       ),
-    );
+      Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        decoration: BoxDecoration(
+          color: const Color(0xFFE8F5E9),
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Text('$checked/$total',
+            style: const TextStyle(
+                fontSize: 12,
+                color: Color(0xFF2E7D32),
+                fontWeight: FontWeight.w600)),
+      ),
+      const SizedBox(width: 8),
+      Text('$_sym${sub.toStringAsFixed(2)}',
+          style: const TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: Color(0xFF1A1A1A))),
+    ]);
   }
 
-  /// Single tile factory — passes currency & dietary pref consistently.
+  Widget _sectionHeader(String name) {
+    return Text(name,
+        style: const TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.w700,
+            color: Color(0xFF2E7D32),
+            letterSpacing: -0.2));
+  }
+
   Widget _buildTile(GroceryItem item) {
     return GroceryItemTile(
       item: item,
@@ -547,6 +728,7 @@ class _GroceryListScreenState extends State<GroceryListScreen> {
       onDelete: () => _deleteItem(item),
       currencySymbol: _sym,
       userDietaryPreference: _diet,
+      onEdit: _isEditMode ? () => _showEditItemSheet(item) : null,
     );
   }
 
@@ -564,19 +746,16 @@ class _GroceryListScreenState extends State<GroceryListScreen> {
             width: 1.5,
           ),
         ),
-        child: Row(
+        child: const Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.add, color: const Color(0xFF2E7D32), size: 22),
-            const SizedBox(width: 8),
-            const Text(
-              'Add Custom Item',
-              style: TextStyle(
-                color: Color(0xFF2E7D32),
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
+            Icon(Icons.add, color: Color(0xFF2E7D32), size: 22),
+            SizedBox(width: 8),
+            Text('Add Custom Item',
+                style: TextStyle(
+                    color: Color(0xFF2E7D32),
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600)),
           ],
         ),
       ),

@@ -1,7 +1,19 @@
+// ─────────────────────────────────────────────
+//  profile_screen.dart  (updated)
+//  Fixes:
+//   • UI redesigned to match target screenshot
+//     (stats row, Quick Overview, green Settings button, Help & Support)
+//   • TermsScreen — full 15-section content
+//   • PrivacyScreen — full dummy content
+// ─────────────────────────────────────────────
+
 import 'package:flutter/material.dart';
 import '../models/grocery_item.dart';
 import '../globals/app_state.dart';
 
+// ═══════════════════════════════════════════════════════════
+//  ProfileScreen
+// ═══════════════════════════════════════════════════════════
 class ProfileScreen extends StatefulWidget {
   final Function(AppCurrency) onCurrencyChanged;
   final Function(String) onDietaryChanged;
@@ -18,6 +30,14 @@ class ProfileScreen extends StatefulWidget {
 
 class _ProfileScreenState extends State<ProfileScreen> {
   double _budget = 115.00;
+  bool _notificationsEnabled = true;
+
+  // ── Dummy stats ───────────────────────────────────────────────────────
+  final int _recipesCount = 12;
+  final int _mealsPlanned = 8;
+  final double _amountSaved = 47.50;
+
+  // ── Pickers / dialogs ─────────────────────────────────────────────────
 
   void _showCurrencyPicker() {
     final appState = AppState.of(context, listen: false);
@@ -25,51 +45,51 @@ class _ProfileScreenState extends State<ProfileScreen> {
       context: context,
       backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (context) => Container(
-        padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 20),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (ctx) => Padding(
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'Select Currency',
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
-            ),
+            _dragHandle(),
+            const SizedBox(height: 16),
+            const Text('Select Currency',
+                style:
+                TextStyle(fontSize: 20, fontWeight: FontWeight.w700)),
             const SizedBox(height: 16),
             ...AppCurrency.supported.map((c) {
-              final isSelected = c.code == appState.currency.code;
+              final sel = c.code == appState.currency.code;
               return ListTile(
+                contentPadding: EdgeInsets.zero,
                 onTap: () {
                   widget.onCurrencyChanged(c);
-                  Navigator.pop(context);
+                  Navigator.pop(ctx);
                 },
-                contentPadding: EdgeInsets.zero,
                 leading: Container(
                   width: 40,
                   height: 40,
                   decoration: BoxDecoration(
-                    color: isSelected ? const Color(0xFFE8F5E9) : const Color(0xFFF5F5F5),
+                    color: sel
+                        ? const Color(0xFFE8F5E9)
+                        : const Color(0xFFF5F5F5),
                     borderRadius: BorderRadius.circular(10),
                   ),
                   alignment: Alignment.center,
-                  child: Text(
-                    c.symbol.trim(),
+                  child: Text(c.symbol.trim(),
+                      style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: sel
+                              ? const Color(0xFF2E7D32)
+                              : Colors.black87)),
+                ),
+                title: Text(c.label,
                     style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: isSelected ? const Color(0xFF2E7D32) : Colors.black87,
-                    ),
-                  ),
-                ),
-                title: Text(
-                  c.label,
-                  style: TextStyle(
-                    fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
-                  ),
-                ),
-                trailing: isSelected
-                    ? const Icon(Icons.check_circle, color: Color(0xFF2E7D32))
+                        fontWeight:
+                        sel ? FontWeight.w600 : FontWeight.w400)),
+                trailing: sel
+                    ? const Icon(Icons.check_circle,
+                    color: Color(0xFF2E7D32))
                     : null,
               );
             }),
@@ -81,26 +101,45 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   void _editBudget() {
     final appState = AppState.of(context, listen: false);
-    final controller = TextEditingController(text: _budget.toStringAsFixed(2));
+    final ctrl =
+    TextEditingController(text: _budget.toStringAsFixed(2));
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20)),
         title: const Text('Edit Monthly Budget'),
         content: TextField(
-          controller: controller,
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          controller: ctrl,
+          keyboardType:
+          const TextInputType.numberWithOptions(decimal: true),
           decoration: InputDecoration(
             prefixText: appState.currency.symbol,
-            border: const OutlineInputBorder(),
+            border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12)),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(
+                  color: Color(0xFF2E7D32), width: 2),
+            ),
           ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel')),
           ElevatedButton(
             onPressed: () {
-              setState(() => _budget = double.tryParse(controller.text) ?? _budget);
-              Navigator.pop(context);
+              setState(() =>
+              _budget = double.tryParse(ctrl.text) ?? _budget);
+              Navigator.pop(ctx);
             },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF2E7D32),
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10)),
+            ),
             child: const Text('Save'),
           ),
         ],
@@ -110,37 +149,44 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   void _showDietaryPicker() {
     final appState = AppState.of(context, listen: false);
-    final options = ['None', 'Vegetarian', 'Vegan', 'Halal', 'Pescatarian'];
+    const options = [
+      'None',
+      'Vegetarian',
+      'Vegan',
+      'Halal',
+      'Pescatarian'
+    ];
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (context) => Container(
-        padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 20),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (ctx) => Padding(
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'Dietary Preference',
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              'We will flag items in your grocery list that conflict with this choice.',
-              style: TextStyle(color: Colors.grey, fontSize: 14),
-            ),
+            _dragHandle(),
             const SizedBox(height: 16),
+            const Text('Dietary Preference',
+                style:
+                TextStyle(fontSize: 20, fontWeight: FontWeight.w700)),
+            const SizedBox(height: 6),
+            const Text(
+                'We will flag grocery items that conflict with your choice.',
+                style: TextStyle(color: Colors.grey, fontSize: 13)),
+            const SizedBox(height: 12),
             ...options.map((o) => ListTile(
+              contentPadding: EdgeInsets.zero,
               title: Text(o),
               trailing: appState.dietaryPreference == o
-                  ? const Icon(Icons.check, color: Color(0xFF2E7D32))
+                  ? const Icon(Icons.check_circle,
+                  color: Color(0xFF2E7D32))
                   : null,
               onTap: () {
                 widget.onDietaryChanged(o);
-                Navigator.pop(context);
+                Navigator.pop(ctx);
               },
             )),
           ],
@@ -149,88 +195,493 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final appState = AppState.of(context);
-    return Scaffold(
-      backgroundColor: const Color(0xFFF3F8F3),
-      appBar: AppBar(
-        title: const Text('Profile', style: TextStyle(fontWeight: FontWeight.bold)),
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-      ),
-      body: ListView(
-        padding: const EdgeInsets.all(20),
-        children: [
-          _buildInfoCard(appState),
-          const SizedBox(height: 24),
-          _buildMenuTile(
-            icon: Icons.description_outlined,
-            title: 'Terms & Conditions',
-            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const TermsScreen())),
+  // ── Help dialog ───────────────────────────────────────────────────────
+  void _showHelp() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20)),
+        title: Row(children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+                color: const Color(0xFFE8F5E9),
+                borderRadius: BorderRadius.circular(10)),
+            child: const Icon(Icons.help_outline,
+                color: Color(0xFF2E7D32), size: 20),
           ),
-          _buildMenuTile(
-            icon: Icons.security_outlined,
-            title: 'Privacy & Security',
-            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PrivacyScreen())),
-          ),
-          _buildMenuTile(
-            icon: Icons.logout,
-            title: 'Logout',
-            textColor: Colors.red,
-            onTap: () {},
+          const SizedBox(width: 12),
+          const Text('Help & Support'),
+        ]),
+        content: const Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Need help with GrocerEase?',
+                style: TextStyle(fontWeight: FontWeight.w600)),
+            SizedBox(height: 12),
+            _HelpRow(
+                icon: Icons.email_outlined, text: 'grocerease@gmail.com'),
+            SizedBox(height: 8),
+            _HelpRow(
+                icon: Icons.schedule_outlined,
+                text: 'Mon – Fri, 9 am – 6 pm MYT'),
+            SizedBox(height: 8),
+            _HelpRow(
+                icon: Icons.language_outlined,
+                text: 'grocerease.app/support'),
+            SizedBox(height: 16),
+            Text(
+                'We typically respond within 1 business day. '
+                    'For urgent issues please email us directly.',
+                style: TextStyle(fontSize: 12, color: Colors.grey)),
+          ],
+        ),
+        actions: [
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF2E7D32),
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10)),
+            ),
+            child: const Text('Got it'),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildInfoCard(AppState appState) {
+  // ── Logout dialog ─────────────────────────────────────────────────────
+  void _confirmLogout() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20)),
+        title: const Text('Log out?'),
+        content: const Text(
+            'You will be returned to the login screen.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel')),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx), // hook up real logout
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10)),
+            ),
+            child: const Text('Log out'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── Build ─────────────────────────────────────────────────────────────
+  @override
+  Widget build(BuildContext context) {
+    final appState = AppState.of(context);
+    return Scaffold(
+      backgroundColor: const Color(0xFFF0F2F0),
+      appBar: AppBar(
+        title: const Text('Profile',
+            style:
+            TextStyle(fontWeight: FontWeight.bold, fontSize: 22)),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        foregroundColor: const Color(0xFF1A1A1A),
+      ),
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 4, 16, 32),
+        children: [
+          // ── Profile card ───────────────────────────────────────────
+          _buildProfileCard(appState),
+          const SizedBox(height: 20),
+
+          // ── Quick Overview ─────────────────────────────────────────
+          const Padding(
+            padding: EdgeInsets.only(left: 4, bottom: 10),
+            child: Text('Quick Overview',
+                style: TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF1A1A1A))),
+          ),
+          _buildQuickOverview(appState),
+          const SizedBox(height: 16),
+
+          // ── Settings (big green button) ────────────────────────────
+          _buildSettingsButton(appState),
+          const SizedBox(height: 12),
+
+          // ── Menu tiles ─────────────────────────────────────────────
+          _buildMenuCard([
+            _menuRow(
+              icon: Icons.security_outlined,
+              label: 'Privacy & Security',
+              onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                      builder: (_) => const PrivacyScreen())),
+            ),
+            _divider(),
+            _menuRow(
+              icon: Icons.description_outlined,
+              label: 'Terms & Conditions',
+              onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                      builder: (_) => const TermsScreen())),
+            ),
+            _divider(),
+            _menuRow(
+              icon: Icons.help_outline_rounded,
+              label: 'Help & Support',
+              onTap: _showHelp,
+            ),
+          ]),
+          const SizedBox(height: 12),
+
+          // ── Logout ─────────────────────────────────────────────────
+          _buildMenuCard([
+            _menuRow(
+              icon: Icons.logout,
+              label: 'Log out',
+              onTap: _confirmLogout,
+              labelColor: Colors.red,
+              iconColor: Colors.red,
+            ),
+          ]),
+        ],
+      ),
+    );
+  }
+
+  // ── Profile card (avatar + name + badge + stats) ──────────────────────
+  Widget _buildProfileCard(AppState appState) {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(20),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10)],
+        boxShadow: [
+          BoxShadow(
+              color: Colors.black.withValues(alpha: 0.05),
+              blurRadius: 10,
+              offset: const Offset(0, 2))
+        ],
       ),
       child: Column(
         children: [
-          Row(
-            children: [
-              const CircleAvatar(radius: 30, backgroundColor: Color(0xFFE8F5E9), child: Icon(Icons.person, size: 30, color: Color(0xFF2E7D32))),
-              const SizedBox(width: 16),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: const [
-                  Text('John Doe', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                  Text('john.doe@example.com', style: TextStyle(color: Colors.grey)),
+          // Avatar row
+          Row(children: [
+            // Green gradient circle avatar
+            Container(
+              width: 64,
+              height: 64,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: const LinearGradient(
+                  colors: [Color(0xFF43A047), Color(0xFF1B5E20)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                      color: const Color(0xFF2E7D32).withValues(alpha: 0.3),
+                      blurRadius: 8,
+                      offset: const Offset(0, 3))
                 ],
               ),
+              child: const Icon(Icons.person_rounded,
+                  size: 36, color: Colors.white),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('John Doe',
+                      style: TextStyle(
+                          fontSize: 20, fontWeight: FontWeight.w700)),
+                  const SizedBox(height: 2),
+                  const Text('john.doe@example.com',
+                      style:
+                      TextStyle(color: Colors.grey, fontSize: 13)),
+                  const SizedBox(height: 6),
+                  // Premium badge
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 10, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFE8F5E9),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                          color: const Color(0xFF81C784), width: 1),
+                    ),
+                    child: const Text('Premium Member',
+                        style: TextStyle(
+                            fontSize: 11,
+                            color: Color(0xFF2E7D32),
+                            fontWeight: FontWeight.w600)),
+                  ),
+                ],
+              ),
+            ),
+          ]),
+          const SizedBox(height: 20),
+          const Divider(height: 1),
+          const SizedBox(height: 16),
+          // Stats row
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [
+              _statItem(_recipesCount.toString(), 'Recipes'),
+              _statDivider(),
+              _statItem(_mealsPlanned.toString(), 'Meals Planned'),
+              _statDivider(),
+              _statItem(
+                  '${appState.currency.symbol.trim()}${_amountSaved.toStringAsFixed(0)}',
+                  'Saved'),
             ],
           ),
-          const Divider(height: 32),
-          _buildRowInfo('Currency', appState.currency.code, _showCurrencyPicker),
-          _buildRowInfo('Budget', '${appState.currency.symbol}${_budget.toStringAsFixed(0)}', _editBudget),
-          _buildRowInfo('Dietary', appState.dietaryPreference, _showDietaryPicker),
         ],
       ),
     );
   }
 
-  Widget _buildRowInfo(String label, String value, VoidCallback onTap) {
+  Widget _statItem(String value, String label) {
+    return Column(
+      children: [
+        Text(value,
+            style: const TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.w700,
+                color: Color(0xFF1A1A1A))),
+        const SizedBox(height: 2),
+        Text(label,
+            style: const TextStyle(fontSize: 12, color: Colors.grey)),
+      ],
+    );
+  }
+
+  Widget _statDivider() {
+    return Container(
+        width: 1, height: 36, color: Colors.grey.shade200);
+  }
+
+  // ── Quick Overview card ───────────────────────────────────────────────
+  Widget _buildQuickOverview(AppState appState) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+              color: Colors.black.withValues(alpha: 0.04),
+              blurRadius: 8,
+              offset: const Offset(0, 2))
+        ],
+      ),
+      child: Column(children: [
+        // Monthly budget
+        _overviewRow(
+          iconBg: const Color(0xFFE8F5E9),
+          icon: Icons.attach_money_rounded,
+          iconColor: const Color(0xFF2E7D32),
+          title: 'Monthly Budget',
+          subtitle:
+          '${appState.currency.symbol.trim()}${_budget.toStringAsFixed(0)}',
+          trailing: GestureDetector(
+            onTap: _editBudget,
+            child: Container(
+              padding: const EdgeInsets.all(6),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF5F5F5),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Icon(Icons.edit_outlined,
+                  size: 16, color: Colors.grey),
+            ),
+          ),
+        ),
+        Divider(height: 1, color: Colors.grey.shade100, indent: 60),
+        // Dietary preferences
+        _overviewRow(
+          iconBg: const Color(0xFFFFF3E0),
+          icon: Icons.language_outlined,
+          iconColor: const Color(0xFFE65100),
+          title: 'Dietary Preferences',
+          subtitle: appState.dietaryPreference,
+          trailing: const Icon(Icons.chevron_right,
+              color: Colors.grey, size: 20),
+          onTap: _showDietaryPicker,
+        ),
+        Divider(height: 1, color: Colors.grey.shade100, indent: 60),
+        // Notifications
+        _overviewRow(
+          iconBg: const Color(0xFFFFF3E0),
+          icon: Icons.notifications_outlined,
+          iconColor: const Color(0xFFE65100),
+          title: 'Notifications',
+          subtitle: _notificationsEnabled ? 'All enabled' : 'Disabled',
+          trailing: Switch(
+            value: _notificationsEnabled,
+            onChanged: (v) => setState(() => _notificationsEnabled = v),
+            activeColor: const Color(0xFF2E7D32),
+            materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          ),
+        ),
+      ]),
+    );
+  }
+
+  Widget _overviewRow({
+    required Color iconBg,
+    required IconData icon,
+    required Color iconColor,
+    required String title,
+    required String subtitle,
+    required Widget trailing,
+    VoidCallback? onTap,
+  }) {
     return InkWell(
       onTap: onTap,
       child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 8),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(label, style: const TextStyle(color: Colors.grey)),
-            Row(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        child: Row(children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+                color: iconBg, borderRadius: BorderRadius.circular(10)),
+            child: Icon(icon, color: iconColor, size: 18),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(value, style: const TextStyle(fontWeight: FontWeight.w600)),
-                const Icon(Icons.chevron_right, size: 20, color: Colors.grey),
+                Text(title,
+                    style: const TextStyle(
+                        fontSize: 14, fontWeight: FontWeight.w600)),
+                const SizedBox(height: 2),
+                Text(subtitle,
+                    style: const TextStyle(
+                        fontSize: 13, color: Colors.grey)),
               ],
+            ),
+          ),
+          trailing,
+        ]),
+      ),
+    );
+  }
+
+  // ── Settings button (big green) ───────────────────────────────────────
+  Widget _buildSettingsButton(AppState appState) {
+    return GestureDetector(
+      onTap: () => _showSettingsSheet(appState),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            colors: [Color(0xFF43A047), Color(0xFF2E7D32)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(
+                color: const Color(0xFF2E7D32).withValues(alpha: 0.35),
+                blurRadius: 10,
+                offset: const Offset(0, 4))
+          ],
+        ),
+        child: Row(children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.2),
+                borderRadius: BorderRadius.circular(10)),
+            child: const Icon(Icons.settings_outlined,
+                color: Colors.white, size: 22),
+          ),
+          const SizedBox(width: 14),
+          const Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Settings',
+                    style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700)),
+                SizedBox(height: 2),
+                Text('Manage your preferences',
+                    style: TextStyle(
+                        color: Colors.white70, fontSize: 12)),
+              ],
+            ),
+          ),
+          const Icon(Icons.chevron_right, color: Colors.white, size: 22),
+        ]),
+      ),
+    );
+  }
+
+  void _showSettingsSheet(AppState appState) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.white,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (ctx) => Padding(
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _dragHandle(),
+            const SizedBox(height: 16),
+            const Text('Settings',
+                style:
+                TextStyle(fontSize: 22, fontWeight: FontWeight.w700)),
+            const SizedBox(height: 20),
+            _settingsTile(
+              icon: Icons.currency_exchange,
+              title: 'Currency',
+              value: appState.currency.code,
+              onTap: () {
+                Navigator.pop(ctx);
+                _showCurrencyPicker();
+              },
+            ),
+            _settingsTile(
+              icon: Icons.account_balance_wallet_outlined,
+              title: 'Monthly Budget',
+              value:
+              '${appState.currency.symbol.trim()}${_budget.toStringAsFixed(0)}',
+              onTap: () {
+                Navigator.pop(ctx);
+                _editBudget();
+              },
+            ),
+            _settingsTile(
+              icon: Icons.restaurant_menu_outlined,
+              title: 'Dietary Preference',
+              value: appState.dietaryPreference,
+              onTap: () {
+                Navigator.pop(ctx);
+                _showDietaryPicker();
+              },
             ),
           ],
         ),
@@ -238,67 +689,460 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  Widget _buildMenuTile({required IconData icon, required String title, required VoidCallback onTap, Color? textColor}) {
+  Widget _settingsTile({
+    required IconData icon,
+    required String title,
+    required String value,
+    required VoidCallback onTap,
+  }) {
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      onTap: onTap,
+      leading: Container(
+        width: 40,
+        height: 40,
+        decoration: BoxDecoration(
+            color: const Color(0xFFE8F5E9),
+            borderRadius: BorderRadius.circular(10)),
+        child: Icon(icon, color: const Color(0xFF2E7D32), size: 20),
+      ),
+      title:
+      Text(title, style: const TextStyle(fontWeight: FontWeight.w500)),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(value,
+              style:
+              TextStyle(color: Colors.grey.shade600, fontSize: 14)),
+          const SizedBox(width: 4),
+          const Icon(Icons.chevron_right, color: Colors.grey, size: 20),
+        ],
+      ),
+    );
+  }
+
+  // ── Menu card helper ──────────────────────────────────────────────────
+  Widget _buildMenuCard(List<Widget> children) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+              color: Colors.black.withValues(alpha: 0.04),
+              blurRadius: 8,
+              offset: const Offset(0, 2))
+        ],
+      ),
+      child: Column(children: children),
+    );
+  }
+
+  Widget _menuRow({
+    required IconData icon,
+    required String label,
+    required VoidCallback onTap,
+    Color? labelColor,
+    Color? iconColor,
+  }) {
     return ListTile(
       onTap: onTap,
-      leading: Icon(icon, color: textColor ?? Colors.black87),
-      title: Text(title, style: TextStyle(color: textColor, fontWeight: FontWeight.w500)),
-      trailing: const Icon(Icons.chevron_right, size: 20),
+      leading: Icon(icon, color: iconColor ?? Colors.black87, size: 22),
+      title: Text(label,
+          style: TextStyle(
+              color: labelColor,
+              fontWeight: FontWeight.w500,
+              fontSize: 15)),
+      trailing:
+      const Icon(Icons.chevron_right, color: Colors.grey, size: 20),
     );
+  }
+
+  Widget _divider() =>
+      Divider(height: 1, color: Colors.grey.shade100, indent: 56);
+
+  // ── Shared drag handle ────────────────────────────────────────────────
+  Widget _dragHandle() => Center(
+    child: Container(
+      width: 40,
+      height: 4,
+      decoration: BoxDecoration(
+          color: Colors.grey.shade300,
+          borderRadius: BorderRadius.circular(2)),
+    ),
+  );
+}
+
+// ── Small helper widget used in dialog ───────────────────────────────────
+class _HelpRow extends StatelessWidget {
+  final IconData icon;
+  final String text;
+  const _HelpRow({required this.icon, required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(children: [
+      Icon(icon, size: 16, color: const Color(0xFF2E7D32)),
+      const SizedBox(width: 8),
+      Text(text, style: const TextStyle(fontSize: 13)),
+    ]);
   }
 }
 
+// ═══════════════════════════════════════════════════════════
+//  TermsScreen  — full 15-section content
+// ═══════════════════════════════════════════════════════════
 class TermsScreen extends StatelessWidget {
   const TermsScreen({super.key});
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Terms & Conditions')),
+      backgroundColor: const Color(0xFFF5F5F5),
+      appBar: AppBar(
+        title: const Text('Terms & Conditions',
+            style: TextStyle(fontWeight: FontWeight.bold)),
+        backgroundColor: Colors.white,
+        foregroundColor: const Color(0xFF1A1A1A),
+        elevation: 0.5,
+      ),
       body: ListView(
         padding: const EdgeInsets.all(20),
-        children: const [
-          Text('Terms and Conditions', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
-          SizedBox(height: 16),
-          Text('1. Acceptance of Terms\nBy using GrocerEase, you agree to these terms...'),
-          Text('\n2. Eligibility\nYou must be at least 13 years old...'),
-          Text('\n3. Account Security\nYou are responsible for maintaining your account...'),
-          Text('\n4. User Content\nYou retain ownership of data you enter...'),
-          Text('\n5. Prohibited Conduct\nYou may not use the app for illegal purposes...'),
-          Text('\n6. Payment & Subscriptions\nCertain features may require payment...'),
-          Text('\n7. Dietary Disclaimer\nDietary warnings are for informational purposes only. Consult a professional...'),
-          Text('\n8. Intellectual Property\nGrocerEase is owned by our company...'),
-          Text('\n9. Limitation of Liability\nWe are not liable for any damages...'),
-          Text('\n10. Termination\nWe may terminate your access at any time...'),
-          Text('\n11. Governing Law\nThese terms are governed by the laws of Malaysia...'),
-          Text('\n12. Changes to Terms\nWe may update these terms occasionally...'),
-          Text('\n13. Contact\nSupport can be reached at support@grocerease.com'),
+        children: [
+          // Header card
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: const Color(0xFFE8F5E9),
+              borderRadius: BorderRadius.circular(12),
+              border:
+              Border.all(color: const Color(0xFFCCE5CC), width: 1),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Terms and Conditions for GrocerEase',
+                    style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                        color: Color(0xFF1B5E20))),
+                const SizedBox(height: 6),
+                Text('Last Updated: May 13, 2026',
+                    style: TextStyle(
+                        fontSize: 13, color: Colors.grey.shade600)),
+                const SizedBox(height: 10),
+                const Text(
+                  'Welcome to GrocerEase. These Terms and Conditions govern your use of the GrocerEase mobile application. '
+                      'By creating an account or using GrocerEase, you agree to these Terms.',
+                  style: TextStyle(fontSize: 13, height: 1.5),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 20),
+          _section('1. About GrocerEase',
+              'GrocerEase is a mobile application designed to assist users with:\n\n'
+                  '• Meal planning\n'
+                  '• Grocery list optimization\n'
+                  '• Pantry tracking\n'
+                  '• Budget tracking\n'
+                  '• Basic health-related meal guidance\n\n'
+                  'The application is intended for personal and non-commercial use only.'),
+          _section('2. Eligibility',
+              'You must be at least 7 years old to use GrocerEase.\n\n'
+                  'If you are under the age of majority in your jurisdiction, you must use the application under the supervision of a parent or guardian.'),
+          _section('3. User Accounts',
+              'To access certain features, users must create an account using a valid email address and password.\n\n'
+                  'You are responsible for:\n\n'
+                  '• Maintaining the confidentiality of your account credentials\n'
+                  '• All activities conducted under your account\n'
+                  '• Providing accurate and updated information\n\n'
+                  'You may delete your account at any time through the application settings or by contacting support.'),
+          _section('4. Acceptable Use',
+              'Users agree not to:\n\n'
+                  '• Attempt to hack, disrupt, or damage the application\n'
+                  '• Create fake or misleading accounts\n'
+                  '• Upload offensive, abusive, harmful, or inappropriate content\n'
+                  '• Use the application for unlawful purposes\n'
+                  '• Interfere with other users\' experience\n\n'
+                  'We reserve the right to suspend or permanently ban users who violate these Terms.'),
+          _section('5. User Content',
+              'Users may upload photos within the application.\n\n'
+                  'You retain ownership of the content you upload. However, by uploading content, you grant GrocerEase a limited, non-exclusive right to store and display the content solely for operating the application.\n\n'
+                  'We reserve the right to remove any content that violates these Terms or is considered inappropriate.'),
+          _section('6. Privacy and Data Collection',
+              'GrocerEase collects limited personal information, including:\n\n'
+                  '• Name\n'
+                  '• Email address\n\n'
+                  'We do not collect:\n\n'
+                  '• Payment information\n'
+                  '• Phone numbers\n'
+                  '• Location data\n\n'
+                  'We do not sell or share your personal information with third parties.\n\n'
+                  'GrocerEase uses Supabase services for backend functionality and analytics.\n\n'
+                  'By using the application, you consent to the collection and use of information as described in our Privacy Policy.'),
+          _section('7. Health-Related Information Disclaimer',
+              'GrocerEase may provide meal planning suggestions, nutrition-related information, or general health guidance.\n\n'
+                  'This information is provided for informational purposes only and does not constitute professional medical, dietary, or healthcare advice.\n\n'
+                  'Users should consult qualified healthcare professionals before making significant dietary or health decisions.'),
+          _section('8. Intellectual Property',
+              'All application content, branding, logos, features, and software related to GrocerEase are owned by GrocerEase unless otherwise stated.\n\n'
+                  'You may not:\n\n'
+                  '• Copy\n'
+                  '• Modify\n'
+                  '• Reverse engineer\n'
+                  '• Redistribute\n'
+                  '• Commercially exploit\n\n'
+                  'any part of the application without written permission.'),
+          _section('9. Availability of Service',
+              'We strive to keep GrocerEase available and functioning properly at all times. However, we do not guarantee uninterrupted or error-free operation.\n\n'
+                  'The application is provided on an "as is" and "as available" basis.'),
+          _section('10. Limitation of Responsibility',
+              'While we aim to provide accurate and reliable services, GrocerEase is not responsible for:\n\n'
+                  '• Data loss\n'
+                  '• Inaccurate grocery or budget calculations\n'
+                  '• User-generated content\n'
+                  '• Service interruptions\n'
+                  '• Technical errors\n\n'
+                  'Users are responsible for verifying important information independently.'),
+          _section('11. Account Suspension and Termination',
+              'We reserve the right to suspend, restrict, or terminate accounts that:\n\n'
+                  '• Violate these Terms\n'
+                  '• Harm other users\n'
+                  '• Abuse the platform\n'
+                  '• Engage in suspicious or illegal activities\n\n'
+                  'Termination may occur without prior notice.'),
+          _section('12. Changes to These Terms',
+              'We may update or modify these Terms at any time.\n\n'
+                  'Updated Terms will become effective once posted within the application. Continued use of GrocerEase after updates constitutes acceptance of the revised Terms.'),
+          _section('13. Governing Law',
+              'These Terms shall be governed by and interpreted in accordance with the laws of Malaysia.\n\n'
+                  'Any disputes arising from the use of GrocerEase shall be subject to the jurisdiction of the courts of Malaysia.'),
+          _section('14. Contact Information',
+              'For questions or support regarding these Terms, please contact:\n\n'
+                  'Email: grocerease@gmail.com'),
+          _section('15. Acceptance of Terms',
+              'By creating an account or using GrocerEase, you acknowledge that you have read, understood, and agreed to these Terms and Conditions.'),
+          const SizedBox(height: 20),
+          // Close button
+          SizedBox(
+            width: double.infinity,
+            height: 50,
+            child: ElevatedButton(
+              onPressed: () => Navigator.pop(context),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF2E7D32),
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14)),
+                elevation: 0,
+              ),
+              child: const Text('I Understand',
+                  style: TextStyle(
+                      fontSize: 16, fontWeight: FontWeight.w600)),
+            ),
+          ),
+          const SizedBox(height: 20),
+        ],
+      ),
+    );
+  }
+
+  static Widget _section(String title, String body) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title,
+              style: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF1B5E20))),
+          const SizedBox(height: 8),
+          Text(body,
+              style: const TextStyle(
+                  fontSize: 14, height: 1.6, color: Color(0xFF3D3D3D))),
+          const SizedBox(height: 8),
+          Divider(color: Colors.grey.shade200),
         ],
       ),
     );
   }
 }
 
+// ═══════════════════════════════════════════════════════════
+//  PrivacyScreen  — full dummy content
+// ═══════════════════════════════════════════════════════════
 class PrivacyScreen extends StatelessWidget {
   const PrivacyScreen({super.key});
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Privacy & Security')),
+      backgroundColor: const Color(0xFFF5F5F5),
+      appBar: AppBar(
+        title: const Text('Privacy & Security',
+            style: TextStyle(fontWeight: FontWeight.bold)),
+        backgroundColor: Colors.white,
+        foregroundColor: const Color(0xFF1A1A1A),
+        elevation: 0.5,
+      ),
       body: ListView(
         padding: const EdgeInsets.all(20),
-        children: const [
-          Text('Privacy Policy', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
-          SizedBox(height: 16),
-          Text('1. Data Collection\nWe collect your email and usage data...'),
-          Text('\n2. Use of Data\nTo improve your shopping experience...'),
-          Text('\n3. Data Storage\nStored securely using Supabase with RLS...'),
-          Text('\n4. Encryption\nSensitive data is encrypted with AES-256...'),
-          Text('\n5. Data Sharing\nWe do not sell your data to third parties...'),
-          Text('\n6. Cookies\nWe use essential session tokens only...'),
-          Text('\n7. User Rights\nYou can request data deletion at any time...'),
-          Text('\n8. Third Party Services\nWe use Supabase and Google Analytics...'),
-          Text('\n9. Security Audits\nWe perform regular security checks...'),
-          Text('\n10. Policy Updates\nLast updated: May 2024.'),
+        children: [
+          // Header card
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: const Color(0xFFE8F5E9),
+              borderRadius: BorderRadius.circular(12),
+              border:
+              Border.all(color: const Color(0xFFCCE5CC), width: 1),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Privacy Policy for GrocerEase',
+                    style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                        color: Color(0xFF1B5E20))),
+                const SizedBox(height: 6),
+                Text('Last Updated: May 13, 2026',
+                    style: TextStyle(
+                        fontSize: 13, color: Colors.grey.shade600)),
+                const SizedBox(height: 10),
+                const Text(
+                  'GrocerEase is committed to protecting your privacy. '
+                      'This policy explains what information we collect, how we use it, and your rights.',
+                  style: TextStyle(fontSize: 13, height: 1.5),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 20),
+          _section('1. Information We Collect',
+              'GrocerEase collects only the minimum information necessary to operate the application:\n\n'
+                  '• Name — used to personalise your experience\n'
+                  '• Email address — used for account login and support\n\n'
+                  'We do NOT collect:\n\n'
+                  '• Payment or credit card details\n'
+                  '• Phone numbers\n'
+                  '• Precise or approximate location data\n'
+                  '• Device contacts or call logs\n'
+                  '• Biometric data'),
+          _section('2. How We Use Your Information',
+              'The information we collect is used solely to:\n\n'
+                  '• Create and manage your GrocerEase account\n'
+                  '• Provide and improve our features (meal planning, grocery lists, pantry tracking)\n'
+                  '• Send important service notifications\n'
+                  '• Respond to support requests\n'
+                  '• Detect and prevent fraudulent or abusive behaviour'),
+          _section('3. Data Storage and Infrastructure',
+              'Your data is stored securely on Supabase, a cloud database platform. '
+                  'Supabase applies Row Level Security (RLS) ensuring that each user can only access their own data.\n\n'
+                  'Data is stored in servers located within regions compliant with applicable data protection laws.'),
+          _section('4. Encryption and Security',
+              'We apply the following security measures:\n\n'
+                  '• Passwords are hashed using bcrypt before storage — we never store plain-text passwords\n'
+                  '• All data in transit is encrypted using TLS 1.2 or higher\n'
+                  '• Sensitive fields are encrypted at rest using AES-256\n'
+                  '• Access tokens expire and are rotated regularly\n\n'
+                  'While we take strong precautions, no system is 100% secure. '
+                  'We encourage you to use a strong, unique password and enable any available two-factor options.'),
+          _section('5. Data Sharing',
+              'GrocerEase does NOT sell, rent, or trade your personal information.\n\n'
+                  'We do not share your data with advertisers or third-party marketing services.\n\n'
+                  'We may disclose information only in the following limited circumstances:\n\n'
+                  '• When required by law or court order\n'
+                  '• To protect the rights or safety of GrocerEase or its users\n'
+                  '• With service providers (e.g. Supabase) strictly for operating the application — they are bound by confidentiality agreements'),
+          _section('6. Cookies and Tracking',
+              'GrocerEase uses only essential session tokens to keep you logged in.\n\n'
+                  'We do NOT use:\n\n'
+                  '• Advertising cookies\n'
+                  '• Third-party tracking pixels\n'
+                  '• Cross-site tracking\n\n'
+                  'Any analytics collected are anonymised and aggregated — they cannot be used to identify individual users.'),
+          _section('7. Your Rights',
+              'You have the following rights regarding your personal data:\n\n'
+                  '• Access — request a copy of the data we hold about you\n'
+                  '• Correction — ask us to correct inaccurate information\n'
+                  '• Deletion — request deletion of your account and all associated data\n'
+                  '• Portability — request your data in a machine-readable format\n'
+                  '• Objection — object to certain types of data processing\n\n'
+                  'To exercise any of these rights, contact us at grocerease@gmail.com. '
+                  'We will respond within 30 days.'),
+          _section('8. Children\'s Privacy',
+              'GrocerEase is not intended for children under 7 years old.\n\n'
+                  'We do not knowingly collect personal information from children under 7. '
+                  'If you believe your child has provided us with personal information, please contact us and we will delete it promptly.'),
+          _section('9. Third-Party Services',
+              'GrocerEase integrates with the following third-party service:\n\n'
+                  '• Supabase (database and authentication) — subject to Supabase\'s own Privacy Policy\n\n'
+                  'We are not responsible for the privacy practices of third-party websites or services linked from within the application.'),
+          _section('10. Security Audits',
+              'We conduct periodic internal security reviews to identify and address potential vulnerabilities.\n\n'
+                  'Users are encouraged to report any suspected security issues to grocerease@gmail.com. '
+                  'We take all reports seriously and aim to address confirmed issues within 72 hours.'),
+          _section('11. Data Retention',
+              'We retain your personal data for as long as your account is active.\n\n'
+                  'If you delete your account:\n\n'
+                  '• Your profile and associated data are permanently deleted within 30 days\n'
+                  '• Anonymised, aggregated analytics data may be retained for service improvement\n\n'
+                  'You may also request early deletion by contacting support.'),
+          _section('12. Changes to This Policy',
+              'We may update this Privacy Policy from time to time.\n\n'
+                  'When we do, the "Last Updated" date at the top of this page will be revised. '
+                  'For significant changes, we will notify you via the application.\n\n'
+                  'Your continued use of GrocerEase after changes are posted constitutes acceptance of the updated Policy.'),
+          _section('13. Contact Us',
+              'If you have any questions, concerns, or requests regarding this Privacy Policy, please reach out:\n\n'
+                  'Email: grocerease@gmail.com\n'
+                  'Response time: within 1–2 business days\n'
+                  'Support hours: Monday – Friday, 9 am – 6 pm MYT'),
+          const SizedBox(height: 20),
+          SizedBox(
+            width: double.infinity,
+            height: 50,
+            child: ElevatedButton(
+              onPressed: () => Navigator.pop(context),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF2E7D32),
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14)),
+                elevation: 0,
+              ),
+              child: const Text('Close',
+                  style: TextStyle(
+                      fontSize: 16, fontWeight: FontWeight.w600)),
+            ),
+          ),
+          const SizedBox(height: 20),
+        ],
+      ),
+    );
+  }
+
+  static Widget _section(String title, String body) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title,
+              style: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF1B5E20))),
+          const SizedBox(height: 8),
+          Text(body,
+              style: const TextStyle(
+                  fontSize: 14, height: 1.6, color: Color(0xFF3D3D3D))),
+          const SizedBox(height: 8),
+          Divider(color: Colors.grey.shade200),
         ],
       ),
     );

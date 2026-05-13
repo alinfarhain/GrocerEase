@@ -1,9 +1,8 @@
 // ─────────────────────────────────────────────
 //  grocery_item_tile.dart  (updated)
 //  Changes:
-//   • Accepts [currencySymbol] — fixes the hardcoded "$" inconsistency
-//   • Shows price-per-unit below the price when available
-//   • Shows a ⚠️ dietary warning chip when item conflicts with user preference
+//   • Added optional [onEdit] — shows ✏️ edit icon when edit mode is on
+//   • Consistent currencySymbol, live price-per-unit, dietary warning chip
 // ─────────────────────────────────────────────
 
 import 'package:flutter/material.dart';
@@ -13,13 +12,11 @@ class GroceryItemTile extends StatelessWidget {
   final GroceryItem item;
   final VoidCallback onToggle;
   final VoidCallback onDelete;
-
-  /// Currency symbol applied consistently throughout the tile.
   final String currencySymbol;
-
-  /// The user's current dietary preference (from profile).
-  /// Pass empty string or 'None' to suppress all warnings.
   final String userDietaryPreference;
+
+  /// When non-null, an edit icon is shown. Tapping it calls this.
+  final VoidCallback? onEdit;
 
   const GroceryItemTile({
     super.key,
@@ -28,14 +25,14 @@ class GroceryItemTile extends StatelessWidget {
     required this.onDelete,
     required this.currencySymbol,
     required this.userDietaryPreference,
+    this.onEdit,
   });
 
   @override
   Widget build(BuildContext context) {
-    final hasDietaryWarning =
-        userDietaryPreference.isNotEmpty &&
-            userDietaryPreference != 'None' &&
-            item.hasDietaryWarningFor(userDietaryPreference);
+    final hasDietaryWarning = userDietaryPreference.isNotEmpty &&
+        userDietaryPreference != 'None' &&
+        item.hasDietaryWarningFor(userDietaryPreference);
 
     return Dismissible(
       key: Key(item.id),
@@ -56,7 +53,9 @@ class GroceryItemTile extends StatelessWidget {
           color: item.isChecked ? const Color(0xFFEDF7ED) : Colors.white,
           borderRadius: BorderRadius.circular(16),
           border: hasDietaryWarning
-              ? Border.all(color: const Color(0xFFE86E28).withValues(alpha: 0.6), width: 1.5)
+              ? Border.all(
+              color: const Color(0xFFE86E28).withValues(alpha: 0.6),
+              width: 1.5)
               : null,
           boxShadow: [
             BoxShadow(
@@ -72,7 +71,8 @@ class GroceryItemTile extends StatelessWidget {
             borderRadius: BorderRadius.circular(16),
             onTap: onToggle,
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              padding:
+              const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -111,7 +111,6 @@ class GroceryItemTile extends StatelessWidget {
                                   : const Color(0xFF1A1A1A),
                             ),
                           ),
-                          // Price per unit (NEW)
                           if (item.pricePerUnit(currencySymbol) != null)
                             Text(
                               item.pricePerUnit(currencySymbol)!,
@@ -123,14 +122,33 @@ class GroceryItemTile extends StatelessWidget {
                             ),
                         ],
                       ),
+                      // ── Edit icon (only shown in edit mode) ───────
+                      if (onEdit != null) ...[
+                        const SizedBox(width: 8),
+                        GestureDetector(
+                          onTap: onEdit,
+                          child: Container(
+                            padding: const EdgeInsets.all(6),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFE8F5E9),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: const Icon(
+                              Icons.edit_outlined,
+                              size: 16,
+                              color: Color(0xFF2E7D32),
+                            ),
+                          ),
+                        ),
+                      ],
                     ],
                   ),
-                  // ── Dietary warning chip (NEW) ──────────────────
+                  // ── Dietary warning chip ──────────────────────────
                   if (hasDietaryWarning) ...[
                     const SizedBox(height: 8),
                     Row(
                       children: [
-                        const SizedBox(width: 40), // align under name
+                        const SizedBox(width: 40),
                         Container(
                           padding: const EdgeInsets.symmetric(
                               horizontal: 8, vertical: 3),
@@ -170,48 +188,36 @@ class GroceryItemTile extends StatelessWidget {
   }
 
   Widget _buildCheckbox() {
-    return GestureDetector(
-      onTap: onToggle,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        width: 26,
-        height: 26,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          color:
-          item.isChecked ? const Color(0xFF2E7D32) : Colors.transparent,
-          border: Border.all(
-            color: item.isChecked
-                ? const Color(0xFF2E7D32)
-                : Colors.grey.shade400,
-            width: 2,
-          ),
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 200),
+      width: 26,
+      height: 26,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: item.isChecked ? const Color(0xFF2E7D32) : Colors.transparent,
+        border: Border.all(
+          color: item.isChecked
+              ? const Color(0xFF2E7D32)
+              : Colors.grey.shade400,
+          width: 2,
         ),
-        child: item.isChecked
-            ? const Icon(Icons.check, color: Colors.white, size: 16)
-            : null,
       ),
+      child: item.isChecked
+          ? const Icon(Icons.check, color: Colors.white, size: 14)
+          : null,
     );
   }
 
   Widget _buildItemName() {
-    return item.isChecked
-        ? Text(
+    return Text(
       item.name,
       style: TextStyle(
-        fontSize: 16,
-        fontWeight: FontWeight.w500,
-        color: Colors.grey.shade400,
-        decoration: TextDecoration.lineThrough,
-        decorationColor: Colors.grey.shade400,
-      ),
-    )
-        : Text(
-      item.name,
-      style: const TextStyle(
-        fontSize: 16,
+        fontSize: 15,
         fontWeight: FontWeight.w600,
-        color: Color(0xFF1A1A1A),
+        color:
+        item.isChecked ? Colors.grey.shade400 : const Color(0xFF1A1A1A),
+        decoration: item.isChecked ? TextDecoration.lineThrough : null,
+        decorationColor: Colors.grey.shade400,
       ),
     );
   }

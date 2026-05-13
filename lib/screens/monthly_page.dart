@@ -11,7 +11,7 @@ class MonthlyPage extends StatefulWidget {
     super.key,
   });
 
-  final Map<String, List<Meal>> mealPlan;
+  final Map<String, dynamic> mealPlan;
   final bool isEditing;
   final void Function(String dateKey)? onDeleteMeal;
 
@@ -224,7 +224,9 @@ class _MonthlyPageState extends State<MonthlyPage> {
 
   Widget _buildSelectedMealCard() {
     final dateKey = DateFormat('yyyy-MM-dd').format(_selectedDate);
-    final meals = widget.mealPlan[dateKey];
+    final dynamic rawMeals = widget.mealPlan[dateKey];
+    final meals = rawMeals is List ? rawMeals.cast<Meal>() : null;
+    
     if (meals == null || meals.isEmpty) {
       return Container(
         height: 100.0,
@@ -247,7 +249,7 @@ class _MonthlyPageState extends State<MonthlyPage> {
         color: Colors.white,
         borderRadius: BorderRadius.circular(20.0),
         border: Border.all(color: const Color(0xFFE8F5E9), width: 2.0),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 8.0, offset: const Offset(0.0, 4.0))],
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 8.0, offset: const Offset(0.0, 4.0))],
       ),
       child: Row(
         children: [
@@ -302,7 +304,7 @@ class _MonthlyPageState extends State<MonthlyPage> {
               },
               child: Container(
                 padding: const EdgeInsets.all(8.0),
-                decoration: const BoxDecoration(color: Color(0xFFE8F5E9), shape: BoxShape.circle),
+                decoration: const BoxDecoration(color: Color(0xFFF5F5F5), shape: BoxShape.circle),
                 child: const Icon(Icons.chevron_right, color: Color(0xFF1BAB52)),
               ),
             ),
