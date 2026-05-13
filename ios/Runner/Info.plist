@@ -45,5 +45,23 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<!-- ✅ Custom URL scheme for Supabase deep linking -->
+        <key>CFBundleURLTypes</key>
+        <array>
+            <dict>
+                <key>CFBundleTypeRole</key>
+                <string>Editor</string>
+                <key>CFBundleURLName</key>
+                <string>com.example.grocereasetest</string>  <!-- your bundle ID -->
+                <key>CFBundleURLSchemes</key>
+                <array>
+                    <string>grocerease</string>
+                </array>
+            </dict>
+        </array>
+
+        <!-- ✅ Required for app_links to work on iOS -->
+        <key>FlutterDeepLinkingEnabled</key>
+        <true/>
 </dict>
 </plist>

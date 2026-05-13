@@ -121,6 +121,7 @@ class _RegisterPageState extends State<RegisterPage> {
           emailController.text.trim(),
           passwordController.text.trim(),
           data: {'full_name': nameController.text.trim()},
+          emailRedirectTo: 'grocerease://login-callback',
         );
         if (mounted) {
           if (response.user != null) {

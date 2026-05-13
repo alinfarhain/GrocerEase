@@ -32,11 +32,13 @@ class SupabaseService {
       String email,
       String password, {
         Map<String, dynamic>? data,
+        String? emailRedirectTo,
       }) async {
     return Supabase.instance.client.auth.signUp(
       email: email,
       password: password,
       data: data,
+      emailRedirectTo: emailRedirectTo,
     );
   }
 }
