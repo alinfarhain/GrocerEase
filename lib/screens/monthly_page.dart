@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:go_router/go_router.dart';
+import '../models/meal.dart';
 
 class MonthlyPage extends StatefulWidget {
   const MonthlyPage({
@@ -10,21 +11,16 @@ class MonthlyPage extends StatefulWidget {
     super.key,
   });
 
-  final Map<String, dynamic> mealPlan;
-
+  final Map<String, List<Meal>> mealPlan;
   final bool isEditing;
-
-  final Function(String dateKey)? onDeleteMeal;
+  final void Function(String dateKey)? onDeleteMeal;
 
   @override
-  State<MonthlyPage> createState() {
-    return _MonthlyPageState();
-  }
+  State<MonthlyPage> createState() => _MonthlyPageState();
 }
 
 class _MonthlyPageState extends State<MonthlyPage> {
   late DateTime _selectedDate;
-
   late DateTime _currentMonth;
 
   @override
@@ -67,10 +63,7 @@ class _MonthlyPageState extends State<MonthlyPage> {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   IconButton(
-                    icon: const Icon(
-                      Icons.chevron_left,
-                      color: Color(0xFF003D33),
-                    ),
+                    icon: const Icon(Icons.chevron_left, color: Color(0xFF003D33)),
                     onPressed: _previousMonth,
                   ),
                   Text(
@@ -82,10 +75,7 @@ class _MonthlyPageState extends State<MonthlyPage> {
                     ),
                   ),
                   IconButton(
-                    icon: const Icon(
-                      Icons.chevron_right,
-                      color: Color(0xFF003D33),
-                    ),
+                    icon: const Icon(Icons.chevron_right, color: Color(0xFF003D33)),
                     onPressed: _nextMonth,
                   ),
                 ],
@@ -122,26 +112,13 @@ class _MonthlyPageState extends State<MonthlyPage> {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceAround,
       children: weekdays
-          .map(
-            (d) => Text(
-          d,
-          style: const TextStyle(
-            color: Colors.grey,
-            fontSize: 12.0,
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-      )
+          .map((d) => Text(d, style: const TextStyle(color: Colors.grey, fontSize: 12.0, fontWeight: FontWeight.w500)))
           .toList(),
     );
   }
 
   Widget _buildCalendarGrid(DateTime today) {
-    final daysInMonth = DateTime(
-      _currentMonth.year,
-      _currentMonth.month + 1,
-      0,
-    ).day;
+    final daysInMonth = DateTime(_currentMonth.year, _currentMonth.month + 1, 0).day;
     final firstWeekday = _currentMonth.weekday;
     final List<Widget> dayWidgets = [];
     for (int i = 1; i < firstWeekday; i++) {
@@ -155,11 +132,7 @@ class _MonthlyPageState extends State<MonthlyPage> {
       final isSelected = date.isAtSameMomentAs(_selectedDate);
       dayWidgets.add(
         GestureDetector(
-          onTap: () {
-            setState(() {
-              _selectedDate = date;
-            });
-          },
+          onTap: () => setState(() => _selectedDate = date),
           child: Container(
             alignment: Alignment.center,
             decoration: BoxDecoration(
@@ -173,26 +146,17 @@ class _MonthlyPageState extends State<MonthlyPage> {
                   Container(
                     width: 32.0,
                     height: 32.0,
-                    decoration: const BoxDecoration(
-                      color: Color(0xFF1BAB52),
-                      shape: BoxShape.circle,
-                    ),
+                    decoration: const BoxDecoration(color: Color(0xFF1BAB52), shape: BoxShape.circle),
                   ),
                 Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Text(
-                      '${day}',
+                      '$day',
                       style: TextStyle(
                         fontSize: 16.0,
-                        fontWeight: isToday || isSelected
-                            ? FontWeight.bold
-                            : FontWeight.normal,
-                        color: isToday
-                            ? Colors.white
-                            : (isSelected
-                            ? const Color(0xFF1BAB52)
-                            : const Color(0xFF003D33)),
+                        fontWeight: isToday || isSelected ? FontWeight.bold : FontWeight.normal,
+                        color: isToday ? Colors.white : (isSelected ? const Color(0xFF1BAB52) : const Color(0xFF003D33)),
                       ),
                     ),
                     if (hasMeal)
@@ -200,10 +164,7 @@ class _MonthlyPageState extends State<MonthlyPage> {
                         margin: const EdgeInsets.only(top: 2.0),
                         width: 4.0,
                         height: 4.0,
-                        decoration: const BoxDecoration(
-                          color: Color(0xFF1BAB52),
-                          shape: BoxShape.circle,
-                        ),
+                        decoration: const BoxDecoration(color: Color(0xFF1BAB52), shape: BoxShape.circle),
                       ),
                   ],
                 ),
@@ -256,18 +217,15 @@ class _MonthlyPageState extends State<MonthlyPage> {
           ),
         ),
         const SizedBox(width: 8.0),
-        Text(
-          label,
-          style: const TextStyle(fontSize: 14.0, color: Color(0xFF003D33)),
-        ),
+        Text(label, style: const TextStyle(fontSize: 14.0, color: Color(0xFF003D33))),
       ],
     );
   }
 
   Widget _buildSelectedMealCard() {
     final dateKey = DateFormat('yyyy-MM-dd').format(_selectedDate);
-    final recipe = widget.mealPlan[dateKey];
-    if (recipe == null) {
+    final meals = widget.mealPlan[dateKey];
+    if (meals == null || meals.isEmpty) {
       return Container(
         height: 100.0,
         alignment: Alignment.center,
@@ -276,12 +234,11 @@ class _MonthlyPageState extends State<MonthlyPage> {
           borderRadius: BorderRadius.circular(20.0),
           border: Border.all(color: const Color(0xFFEEEEEE)),
         ),
-        child: const Text(
-          'No meal planned for this day',
-          style: TextStyle(color: Colors.grey),
-        ),
+        child: const Text('No meal planned for this day', style: TextStyle(color: Colors.grey)),
       );
     }
+    
+    final meal = meals.first;
     final dayName = DateFormat('EEE').format(_selectedDate);
     final dayNum = DateFormat('d').format(_selectedDate);
     return Container(
@@ -290,41 +247,19 @@ class _MonthlyPageState extends State<MonthlyPage> {
         color: Colors.white,
         borderRadius: BorderRadius.circular(20.0),
         border: Border.all(color: const Color(0xFFE8F5E9), width: 2.0),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.02),
-            blurRadius: 8.0,
-            offset: const Offset(0.0, 4.0),
-          ),
-        ],
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 8.0, offset: const Offset(0.0, 4.0))],
       ),
       child: Row(
         children: [
           Container(
             width: 60.0,
             height: 70.0,
-            decoration: BoxDecoration(
-              color: const Color(0xFFE8F5E9),
-              borderRadius: BorderRadius.circular(16.0),
-            ),
+            decoration: BoxDecoration(color: const Color(0xFFE8F5E9), borderRadius: BorderRadius.circular(16.0)),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Text(
-                  dayName,
-                  style: const TextStyle(
-                    fontSize: 12.0,
-                    color: Color(0xFF1BAB52),
-                  ),
-                ),
-                Text(
-                  dayNum,
-                  style: const TextStyle(
-                    fontSize: 20.0,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF1BAB52),
-                  ),
-                ),
+                Text(dayName, style: const TextStyle(fontSize: 12.0, color: Color(0xFF1BAB52))),
+                Text(dayNum, style: const TextStyle(fontSize: 20.0, fontWeight: FontWeight.bold, color: Color(0xFF1BAB52))),
               ],
             ),
           ),
@@ -333,44 +268,17 @@ class _MonthlyPageState extends State<MonthlyPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  recipe['name'] ?? 'Recipe',
-                  style: const TextStyle(
-                    fontSize: 18.0,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF003D33),
-                  ),
-                ),
+                Text(meal.title, style: const TextStyle(fontSize: 18.0, fontWeight: FontWeight.bold, color: Color(0xFF003D33))),
                 const SizedBox(height: 8.0),
                 Row(
                   children: [
-                    const Icon(
-                      Icons.people_outline,
-                      size: 16.0,
-                      color: Colors.grey,
-                    ),
+                    const Icon(Icons.people_outline, size: 16.0, color: Colors.grey),
                     const SizedBox(width: 4.0),
-                    Text(
-                      '${recipe['servings'] ?? '4'}',
-                      style: const TextStyle(
-                        fontSize: 14.0,
-                        color: Colors.grey,
-                      ),
-                    ),
+                    Text('${meal.servings}', style: const TextStyle(fontSize: 14.0, color: Colors.grey)),
                     const SizedBox(width: 16.0),
-                    const Icon(
-                      Icons.local_fire_department_outlined,
-                      size: 16.0,
-                      color: Colors.grey,
-                    ),
+                    const Icon(Icons.local_fire_department_outlined, size: 16.0, color: Colors.grey),
                     const SizedBox(width: 4.0),
-                    Text(
-                      '${recipe['caloriesPerServing'] ?? '450'}',
-                      style: const TextStyle(
-                        fontSize: 14.0,
-                        color: Colors.grey,
-                      ),
-                    ),
+                    Text('${meal.calories}', style: const TextStyle(fontSize: 14.0, color: Colors.grey)),
                   ],
                 ),
               ],
@@ -378,42 +286,24 @@ class _MonthlyPageState extends State<MonthlyPage> {
           ),
           if (widget.isEditing)
             GestureDetector(
-              onTap: () {
-                if (widget.onDeleteMeal != null) {
-                  widget.onDeleteMeal?.call(dateKey);
-                }
-              },
+              onTap: () => widget.onDeleteMeal?.call(dateKey),
               child: Container(
                 padding: const EdgeInsets.all(8.0),
-                decoration: const BoxDecoration(
-                  color: Color(0xFFFFEBEE),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(
-                  Icons.delete_outline,
-                  color: Color(0xFFEF5350),
-                  size: 20.0,
-                ),
+                decoration: const BoxDecoration(color: Color(0xFFFFEBEE), shape: BoxShape.circle),
+                child: const Icon(Icons.delete_outline, color: Color(0xFFEF5350), size: 20.0),
               ),
             )
           else
             GestureDetector(
               onTap: () {
-                context.pushNamed(
-                  'recipe-view',
-                  extra: Map<String, dynamic>.from(recipe),
-                );
+                if (meal.originalData != null) {
+                  context.pushNamed('recipe-view', extra: Map<String, dynamic>.from(meal.originalData!));
+                }
               },
               child: Container(
                 padding: const EdgeInsets.all(8.0),
-                decoration: const BoxDecoration(
-                  color: Color(0xFFE8F5E9),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(
-                  Icons.chevron_right,
-                  color: Color(0xFF1BAB52),
-                ),
+                decoration: const BoxDecoration(color: Color(0xFFE8F5E9), shape: BoxShape.circle),
+                child: const Icon(Icons.chevron_right, color: Color(0xFF1BAB52)),
               ),
             ),
         ],

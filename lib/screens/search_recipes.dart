@@ -1101,7 +1101,7 @@ class _SearchRecipesState extends State<SearchRecipes> {
           currentIndex: 1,
           onTap: (index) {
             AppState.of(context, listen: false).setTabIndex(index);
-            context.go('/main-page');
+            context.go('/');
           },
           items: const [
             BottomNavigationBarItem(

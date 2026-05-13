@@ -1,12 +1,21 @@
+// ─────────────────────────────────────────────
+//  add_item_sheet.dart  (updated)
+//  Changes:
+//   • Accepts [currencySymbol] — price label now shows correct symbol
+// ─────────────────────────────────────────────
+
 import 'package:flutter/material.dart';
 
 class AddItemSheet extends StatefulWidget {
   final List<String> categories;
-  final void Function(String name, String quantity, double price, String category) onAdd;
+  final String currencySymbol;
+  final void Function(
+      String name, String quantity, double price, String category) onAdd;
 
   const AddItemSheet({
     super.key,
     required this.categories,
+    required this.currencySymbol,
     required this.onAdd,
   });
 
@@ -33,7 +42,8 @@ class _AddItemSheetState extends State<AddItemSheet> {
   ];
 
   List<String> get _allCategories {
-    final all = {..._defaultCategories, ...widget.categories}.toList()..sort();
+    final all = {..._defaultCategories, ...widget.categories}.toList()
+      ..sort();
     return all;
   }
 
@@ -73,7 +83,6 @@ class _AddItemSheetState extends State<AddItemSheet> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Handle bar
             Center(
               child: Container(
                 width: 40,
@@ -98,7 +107,8 @@ class _AddItemSheetState extends State<AddItemSheet> {
               controller: _nameController,
               label: 'Item Name',
               hint: 'e.g. Avocado',
-              validator: (v) => (v == null || v.isEmpty) ? 'Required' : null,
+              validator: (v) =>
+              (v == null || v.isEmpty) ? 'Required' : null,
             ),
             const SizedBox(height: 12),
             Row(
@@ -107,20 +117,25 @@ class _AddItemSheetState extends State<AddItemSheet> {
                   child: _buildField(
                     controller: _quantityController,
                     label: 'Quantity',
-                    hint: 'e.g. 3 or 1 kg',
-                    validator: (v) => (v == null || v.isEmpty) ? 'Required' : null,
+                    hint: 'e.g. 3 pcs or 1 kg',
+                    validator: (v) =>
+                    (v == null || v.isEmpty) ? 'Required' : null,
                   ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
                   child: _buildField(
                     controller: _priceController,
-                    label: 'Price (RM)',
+                    // Label now reflects the active currency
+                    label: 'Price (${widget.currencySymbol.trim()})',
                     hint: '0.00',
-                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true),
                     validator: (v) {
                       if (v == null || v.isEmpty) return 'Required';
-                      if (double.tryParse(v) == null) return 'Invalid price';
+                      if (double.tryParse(v) == null) {
+                        return 'Invalid price';
+                      }
                       return null;
                     },
                   ),
@@ -192,13 +207,16 @@ class _AddItemSheetState extends State<AddItemSheet> {
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: Color(0xFF2E7D32), width: 1.5),
+              borderSide: const BorderSide(
+                  color: Color(0xFF2E7D32), width: 1.5),
             ),
             errorBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: Colors.red, width: 1),
+              borderSide:
+              const BorderSide(color: Colors.red, width: 1),
             ),
-            contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+            contentPadding: const EdgeInsets.symmetric(
+                horizontal: 14, vertical: 14),
           ),
         ),
       ],
@@ -220,7 +238,8 @@ class _AddItemSheetState extends State<AddItemSheet> {
         const SizedBox(height: 6),
         DropdownButtonFormField<String>(
           value: _selectedCategory,
-          hint: Text('Select category', style: TextStyle(color: Colors.grey.shade400)),
+          hint: Text('Select category',
+              style: TextStyle(color: Colors.grey.shade400)),
           decoration: InputDecoration(
             filled: true,
             fillColor: const Color(0xFFF5F5F5),
@@ -230,9 +249,11 @@ class _AddItemSheetState extends State<AddItemSheet> {
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: Color(0xFF2E7D32), width: 1.5),
+              borderSide: const BorderSide(
+                  color: Color(0xFF2E7D32), width: 1.5),
             ),
-            contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+            contentPadding: const EdgeInsets.symmetric(
+                horizontal: 14, vertical: 14),
           ),
           items: _allCategories
               .map((c) => DropdownMenuItem(value: c, child: Text(c)))

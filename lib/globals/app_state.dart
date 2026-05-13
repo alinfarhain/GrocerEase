@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'themes.dart';
 import 'app_constants.dart';
 import '../main.dart';
+import '../models/grocery_item.dart';
 
 class AppState extends ChangeNotifier {
   AppState();
@@ -12,10 +13,12 @@ class AppState extends ChangeNotifier {
   }
 
   ThemeData _theme = lightTheme;
+  AppCurrency _currency = AppCurrency.supported.first;
+  String _dietaryPreference = 'None';
 
-  ThemeData get theme {
-    return _theme;
-  }
+  ThemeData get theme => _theme;
+  AppCurrency get currency => _currency;
+  String get dietaryPreference => _dietaryPreference;
 
   bool get isFirstTime {
     return sharedPrefs.getBool(AppConstants.isFirstTimeKey) ?? true;
@@ -25,7 +28,7 @@ class AppState extends ChangeNotifier {
     return sharedPrefs.getBool(AppConstants.isLoggedInKey) ?? false;
   }
 
-  int _currentTabIndex = 2; // Default to Grocery List tab index
+  int _currentTabIndex = 0; // Default to Home tab index
 
   int get currentTabIndex {
     return _currentTabIndex;
@@ -53,6 +56,16 @@ class AppState extends ChangeNotifier {
 
   void setTabIndex(int index) {
     _currentTabIndex = index;
+    notifyListeners();
+  }
+
+  void setCurrency(AppCurrency currency) {
+    _currency = currency;
+    notifyListeners();
+  }
+
+  void setDietaryPreference(String preference) {
+    _dietaryPreference = preference;
     notifyListeners();
   }
 }

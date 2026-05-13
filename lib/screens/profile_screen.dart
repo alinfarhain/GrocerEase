@@ -1,58 +1,106 @@
 import 'package:flutter/material.dart';
+import '../models/grocery_item.dart';
+import '../globals/app_state.dart';
 
 class ProfileScreen extends StatefulWidget {
-  const ProfileScreen({super.key});
+  final Function(AppCurrency) onCurrencyChanged;
+  final Function(String) onDietaryChanged;
+
+  const ProfileScreen({
+    super.key,
+    required this.onCurrencyChanged,
+    required this.onDietaryChanged,
+  });
 
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
-  double _budget = 400.00;
-  String _dietary = 'Vegetarian';
-  bool _notificationsEnabled = true;
+  double _budget = 115.00;
+
+  void _showCurrencyPicker() {
+    final appState = AppState.of(context, listen: false);
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (context) => Container(
+        padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Select Currency',
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 16),
+            ...AppCurrency.supported.map((c) {
+              final isSelected = c.code == appState.currency.code;
+              return ListTile(
+                onTap: () {
+                  widget.onCurrencyChanged(c);
+                  Navigator.pop(context);
+                },
+                contentPadding: EdgeInsets.zero,
+                leading: Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: isSelected ? const Color(0xFFE8F5E9) : const Color(0xFFF5F5F5),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  alignment: Alignment.center,
+                  child: Text(
+                    c.symbol.trim(),
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: isSelected ? const Color(0xFF2E7D32) : Colors.black87,
+                    ),
+                  ),
+                ),
+                title: Text(
+                  c.label,
+                  style: TextStyle(
+                    fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
+                  ),
+                ),
+                trailing: isSelected
+                    ? const Icon(Icons.check_circle, color: Color(0xFF2E7D32))
+                    : null,
+              );
+            }),
+          ],
+        ),
+      ),
+    );
+  }
 
   void _editBudget() {
-    final controller = TextEditingController(text: _budget.toStringAsFixed(0));
+    final appState = AppState.of(context, listen: false);
+    final controller = TextEditingController(text: _budget.toStringAsFixed(2));
     showDialog(
       context: context,
-      builder: (_) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text('Edit Monthly Budget',
-            style: TextStyle(fontWeight: FontWeight.w700, fontSize: 18)),
+      builder: (context) => AlertDialog(
+        title: const Text('Edit Monthly Budget'),
         content: TextField(
           controller: controller,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
           decoration: InputDecoration(
-            prefixText: 'RM ',
-            filled: true,
-            fillColor: const Color(0xFFF5F5F5),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide.none,
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: Color(0xFF2E7D32), width: 1.5),
-            ),
+            prefixText: appState.currency.symbol,
+            border: const OutlineInputBorder(),
           ),
         ),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text('Cancel', style: TextStyle(color: Colors.grey.shade600)),
-          ),
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
           ElevatedButton(
             onPressed: () {
-              final val = double.tryParse(controller.text);
-              if (val != null) setState(() => _budget = val);
+              setState(() => _budget = double.tryParse(controller.text) ?? _budget);
               Navigator.pop(context);
             },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF2E7D32),
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-            ),
             child: const Text('Save'),
           ),
         ],
@@ -60,42 +108,38 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  void _editDietary() {
-    final options = ['Vegetarian', 'Vegan', 'Pescatarian', 'Omnivore', 'Keto', 'Halal'];
+  void _showDietaryPicker() {
+    final appState = AppState.of(context, listen: false);
+    final options = ['None', 'Vegetarian', 'Vegan', 'Halal', 'Pescatarian'];
     showModalBottomSheet(
       context: context,
-      backgroundColor: Colors.transparent,
-      builder: (_) => Container(
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-        ),
-        padding: const EdgeInsets.fromLTRB(20, 20, 20, 36),
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (context) => Container(
+        padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 20),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Center(
-              child: Container(
-                width: 40, height: 4,
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade300,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
+            const Text(
+              'Dietary Preference',
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
             ),
-            const SizedBox(height: 20),
-            const Text('Dietary Preferences',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+            const SizedBox(height: 8),
+            const Text(
+              'We will flag items in your grocery list that conflict with this choice.',
+              style: TextStyle(color: Colors.grey, fontSize: 14),
+            ),
             const SizedBox(height: 16),
             ...options.map((o) => ListTile(
-              contentPadding: EdgeInsets.zero,
-              title: Text(o, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w500)),
-              trailing: _dietary == o
-                  ? const Icon(Icons.check_circle, color: Color(0xFF2E7D32))
-                  : Icon(Icons.radio_button_unchecked, color: Colors.grey.shade400),
+              title: Text(o),
+              trailing: appState.dietaryPreference == o
+                  ? const Icon(Icons.check, color: Color(0xFF2E7D32))
+                  : null,
               onTap: () {
-                setState(() => _dietary = o);
+                widget.onDietaryChanged(o);
                 Navigator.pop(context);
               },
             )),
@@ -107,436 +151,155 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final appState = AppState.of(context);
     return Scaffold(
       backgroundColor: const Color(0xFFF3F8F3),
-      body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.symmetric(horizontal: 20),
+      appBar: AppBar(
+        title: const Text('Profile', style: TextStyle(fontWeight: FontWeight.bold)),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+      ),
+      body: ListView(
+        padding: const EdgeInsets.all(20),
+        children: [
+          _buildInfoCard(appState),
+          const SizedBox(height: 24),
+          _buildMenuTile(
+            icon: Icons.description_outlined,
+            title: 'Terms & Conditions',
+            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const TermsScreen())),
+          ),
+          _buildMenuTile(
+            icon: Icons.security_outlined,
+            title: 'Privacy & Security',
+            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PrivacyScreen())),
+          ),
+          _buildMenuTile(
+            icon: Icons.logout,
+            title: 'Logout',
+            textColor: Colors.red,
+            onTap: () {},
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInfoCard(AppState appState) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10)],
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              const CircleAvatar(radius: 30, backgroundColor: Color(0xFFE8F5E9), child: Icon(Icons.person, size: 30, color: Color(0xFF2E7D32))),
+              const SizedBox(width: 16),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: const [
+                  Text('John Doe', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                  Text('john.doe@example.com', style: TextStyle(color: Colors.grey)),
+                ],
+              ),
+            ],
+          ),
+          const Divider(height: 32),
+          _buildRowInfo('Currency', appState.currency.code, _showCurrencyPicker),
+          _buildRowInfo('Budget', '${appState.currency.symbol}${_budget.toStringAsFixed(0)}', _editBudget),
+          _buildRowInfo('Dietary', appState.dietaryPreference, _showDietaryPicker),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRowInfo(String label, String value, VoidCallback onTap) {
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            const SizedBox(height: 20),
-            const Text(
-              'Profile',
-              style: TextStyle(
-                fontSize: 30,
-                fontWeight: FontWeight.w800,
-                color: Color(0xFF1A1A1A),
-                letterSpacing: -0.5,
-              ),
+            Text(label, style: const TextStyle(color: Colors.grey)),
+            Row(
+              children: [
+                Text(value, style: const TextStyle(fontWeight: FontWeight.w600)),
+                const Icon(Icons.chevron_right, size: 20, color: Colors.grey),
+              ],
             ),
-            const SizedBox(height: 20),
-
-            // --- Profile Card ---
-            _buildProfileCard(),
-
-            const SizedBox(height: 28),
-
-            const Text(
-              'Quick Overview',
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.w700,
-                color: Color(0xFF1A1A1A),
-                letterSpacing: -0.3,
-              ),
-            ),
-            const SizedBox(height: 12),
-
-            // --- Quick Overview Card ---
-            _buildQuickOverviewCard(),
-
-            const SizedBox(height: 16),
-
-            // --- Settings Button ---
-            _buildSettingsButton(),
-
-            const SizedBox(height: 12),
-
-            // --- Privacy & Security ---
-            _buildMenuTile(
-              icon: Icons.shield_outlined,
-              label: 'Privacy & Security',
-              iconColor: Colors.black87,
-              bgColor: Colors.grey.shade100,
-            ),
-
-            const SizedBox(height: 10),
-
-            // --- Help & Support ---
-            _buildMenuTile(
-              icon: Icons.help_outline,
-              label: 'Help & Support',
-              iconColor: Colors.black87,
-              bgColor: Colors.grey.shade100,
-            ),
-
-            const SizedBox(height: 32),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildProfileCard() {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 12,
-            offset: const Offset(0, 3),
-          ),
-        ],
-      ),
-      child: Column(
-        children: [
-          Row(
-            children: [
-              // Avatar
-              Container(
-                width: 72,
-                height: 72,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFF5D8A3C), Color(0xFFD47C2A)],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                ),
-                child: const Icon(Icons.person, color: Colors.white, size: 38),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Sarah Johnson',
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.w700,
-                        color: Color(0xFF1A1A1A),
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      'sarah.j@email.com',
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: Colors.grey.shade600,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFE8F5E9),
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: const Color(0xFFB2DFBB), width: 1),
-                      ),
-                      child: const Text(
-                        'Premium Member',
-                        style: TextStyle(
-                          color: Color(0xFF2E7D32),
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 20),
-          Divider(color: Colors.grey.shade200, height: 1),
-          const SizedBox(height: 16),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: [
-              _statItem('42', 'Recipes'),
-              _verticalDivider(),
-              _statItem('28', 'Meals Planned'),
-              _verticalDivider(),
-              _statItem('\$285', 'Saved'),
-            ],
-          ),
+  Widget _buildMenuTile({required IconData icon, required String title, required VoidCallback onTap, Color? textColor}) {
+    return ListTile(
+      onTap: onTap,
+      leading: Icon(icon, color: textColor ?? Colors.black87),
+      title: Text(title, style: TextStyle(color: textColor, fontWeight: FontWeight.w500)),
+      trailing: const Icon(Icons.chevron_right, size: 20),
+    );
+  }
+}
+
+class TermsScreen extends StatelessWidget {
+  const TermsScreen({super.key});
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Terms & Conditions')),
+      body: ListView(
+        padding: const EdgeInsets.all(20),
+        children: const [
+          Text('Terms and Conditions', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+          SizedBox(height: 16),
+          Text('1. Acceptance of Terms\nBy using GrocerEase, you agree to these terms...'),
+          Text('\n2. Eligibility\nYou must be at least 13 years old...'),
+          Text('\n3. Account Security\nYou are responsible for maintaining your account...'),
+          Text('\n4. User Content\nYou retain ownership of data you enter...'),
+          Text('\n5. Prohibited Conduct\nYou may not use the app for illegal purposes...'),
+          Text('\n6. Payment & Subscriptions\nCertain features may require payment...'),
+          Text('\n7. Dietary Disclaimer\nDietary warnings are for informational purposes only. Consult a professional...'),
+          Text('\n8. Intellectual Property\nGrocerEase is owned by our company...'),
+          Text('\n9. Limitation of Liability\nWe are not liable for any damages...'),
+          Text('\n10. Termination\nWe may terminate your access at any time...'),
+          Text('\n11. Governing Law\nThese terms are governed by the laws of Malaysia...'),
+          Text('\n12. Changes to Terms\nWe may update these terms occasionally...'),
+          Text('\n13. Contact\nSupport can be reached at support@grocerease.com'),
         ],
       ),
     );
   }
+}
 
-  Widget _statItem(String value, String label) {
-    return Column(
-      children: [
-        Text(
-          value,
-          style: const TextStyle(
-            fontSize: 22,
-            fontWeight: FontWeight.w800,
-            color: Color(0xFF1A1A1A),
-          ),
-        ),
-        const SizedBox(height: 2),
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: 12,
-            color: Colors.grey.shade500,
-            fontWeight: FontWeight.w400,
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _verticalDivider() {
-    return Container(
-      width: 1,
-      height: 36,
-      color: Colors.grey.shade200,
-    );
-  }
-
-  Widget _buildQuickOverviewCard() {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 12,
-            offset: const Offset(0, 3),
-          ),
+class PrivacyScreen extends StatelessWidget {
+  const PrivacyScreen({super.key});
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Privacy & Security')),
+      body: ListView(
+        padding: const EdgeInsets.all(20),
+        children: const [
+          Text('Privacy Policy', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+          SizedBox(height: 16),
+          Text('1. Data Collection\nWe collect your email and usage data...'),
+          Text('\n2. Use of Data\nTo improve your shopping experience...'),
+          Text('\n3. Data Storage\nStored securely using Supabase with RLS...'),
+          Text('\n4. Encryption\nSensitive data is encrypted with AES-256...'),
+          Text('\n5. Data Sharing\nWe do not sell your data to third parties...'),
+          Text('\n6. Cookies\nWe use essential session tokens only...'),
+          Text('\n7. User Rights\nYou can request data deletion at any time...'),
+          Text('\n8. Third Party Services\nWe use Supabase and Google Analytics...'),
+          Text('\n9. Security Audits\nWe perform regular security checks...'),
+          Text('\n10. Policy Updates\nLast updated: May 2024.'),
         ],
-      ),
-      child: Column(
-        children: [
-          // Monthly Budget
-          _overviewRow(
-            iconWidget: _iconCircle(
-              Icons.attach_money,
-              const Color(0xFF2E7D32),
-              const Color(0xFFE8F5E9),
-            ),
-            title: 'Monthly Budget',
-            subtitle: 'RM${_budget.toStringAsFixed(0)}',
-            trailing: GestureDetector(
-              onTap: _editBudget,
-              child: Container(
-                width: 36,
-                height: 36,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFE8F5E9),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(Icons.edit_outlined, size: 17, color: Color(0xFF2E7D32)),
-              ),
-            ),
-            showDivider: true,
-          ),
-
-          // Dietary Preferences
-          GestureDetector(
-            onTap: _editDietary,
-            child: _overviewRow(
-              iconWidget: _iconCircle(
-                Icons.language,
-                const Color(0xFFE86E28),
-                const Color(0xFFFFF0E8),
-              ),
-              title: 'Dietary Preferences',
-              subtitle: _dietary,
-              showDivider: true,
-            ),
-          ),
-
-          // Notifications
-          _overviewRow(
-            iconWidget: _iconCircle(
-              Icons.notifications_outlined,
-              const Color(0xFF2E7D32),
-              const Color(0xFFE8F5E9),
-            ),
-            title: 'Notifications',
-            subtitle: _notificationsEnabled ? 'All enabled' : 'Disabled',
-            trailing: Switch(
-              value: _notificationsEnabled,
-              onChanged: (val) => setState(() => _notificationsEnabled = val),
-              activeColor: const Color(0xFF2E7D32),
-              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-            ),
-            showDivider: false,
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _overviewRow({
-    required Widget iconWidget,
-    required String title,
-    required String subtitle,
-    Widget? trailing,
-    required bool showDivider,
-  }) {
-    return Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-          child: Row(
-            children: [
-              iconWidget,
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: const TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFF1A1A1A),
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      subtitle,
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: Colors.grey.shade500,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              if (trailing != null) trailing,
-            ],
-          ),
-        ),
-        if (showDivider)
-          Divider(
-            color: Colors.grey.shade100,
-            height: 1,
-            indent: 16,
-            endIndent: 16,
-          ),
-      ],
-    );
-  }
-
-  Widget _iconCircle(IconData icon, Color iconColor, Color bgColor) {
-    return Container(
-      width: 42,
-      height: 42,
-      decoration: BoxDecoration(shape: BoxShape.circle, color: bgColor),
-      child: Icon(icon, color: iconColor, size: 22),
-    );
-  }
-
-  Widget _buildSettingsButton() {
-    return Container(
-      height: 72,
-      decoration: BoxDecoration(
-        color: const Color(0xFF2E7D32),
-        borderRadius: BorderRadius.circular(18),
-      ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(18),
-          onTap: () {},
-          splashColor: Colors.white.withOpacity(0.1),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            child: Row(
-              children: [
-                const Icon(Icons.settings, color: Colors.white, size: 26),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: const [
-                      Text(
-                        'Settings',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 17,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      SizedBox(height: 2),
-                      Text(
-                        'Manage your preferences',
-                        style: TextStyle(
-                          color: Colors.white70,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w400,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const Icon(Icons.chevron_right, color: Colors.white, size: 22),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildMenuTile({
-    required IconData icon,
-    required String label,
-    required Color iconColor,
-    required Color bgColor,
-  }) {
-    return Container(
-      height: 60,
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.04),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(16),
-          onTap: () {},
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 18),
-            child: Row(
-              children: [
-                Icon(icon, color: iconColor, size: 22),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Text(
-                    label,
-                    style: const TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w600,
-                      color: Color(0xFF1A1A1A),
-                    ),
-                  ),
-                ),
-                Icon(Icons.chevron_right, color: Colors.grey.shade400, size: 22),
-              ],
-            ),
-          ),
-        ),
       ),
     );
   }

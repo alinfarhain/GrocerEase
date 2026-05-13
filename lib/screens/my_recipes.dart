@@ -1221,7 +1221,7 @@ class _MyRecipesState extends State<MyRecipes> {
                   child: GestureDetector(
                     onTap: () {
                       AppState.of(context, listen: false).setTabIndex(1);
-                      context.go('/main-page');
+                      context.go('/');
                     },
                     child: Container(
                       decoration: BoxDecoration(
@@ -1588,7 +1588,7 @@ class _MyRecipesState extends State<MyRecipes> {
           currentIndex: 1,
           onTap: (index) {
             appState.setTabIndex(index);
-            context.go('/main-page');
+            context.go('/');
           },
           selectedLabelStyle: const TextStyle(
             fontSize: 12.0,

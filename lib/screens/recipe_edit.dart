@@ -213,17 +213,19 @@ class _RecipeEditState extends State<RecipeEdit> {
     );
   }
 
-  Widget _buildTextField(TextEditingController controller, String hint) {
+  Widget _buildTextField(TextEditingController controller, String hint,
+      {EdgeInsets? contentPadding}) {
     return TextField(
       controller: controller,
       decoration: InputDecoration(
         hintText: hint,
         filled: true,
         fillColor: Colors.white,
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 20.0,
-          vertical: 16.0,
-        ),
+        contentPadding: contentPadding ??
+            const EdgeInsets.symmetric(
+              horizontal: 20.0,
+              vertical: 16.0,
+            ),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(16.0),
           borderSide: const BorderSide(color: Color(0xFFEEEEEE)),
@@ -274,35 +276,166 @@ class _RecipeEditState extends State<RecipeEdit> {
     );
   }
 
+  double? _parseAmount(String text) {
+    text = text.trim();
+    if (text.isEmpty) return null;
+
+    // Handle "1 1/2" format
+    if (text.contains(' ')) {
+      final parts = text.split(' ');
+      if (parts.length == 2) {
+        final whole = double.tryParse(parts[0]);
+        final fraction = _parseFraction(parts[1]);
+        if (whole != null && fraction != null) {
+          return whole + fraction;
+        }
+      }
+    }
+
+    // Handle "1/2" format
+    final fraction = _parseFraction(text);
+    if (fraction != null) return fraction;
+
+    // Handle "1.5" format
+    return double.tryParse(text);
+  }
+
+  double? _parseFraction(String text) {
+    final parts = text.split('/');
+    if (parts.length == 2) {
+      final num = double.tryParse(parts[0]);
+      final den = double.tryParse(parts[1]);
+      if (num != null && den != null && den != 0) {
+        return num / den;
+      }
+    }
+    return null;
+  }
+
+  String _formatAmount(double amount, {bool preferFraction = false}) {
+    if (amount == amount.roundToDouble()) {
+      return amount.toInt().toString();
+    }
+
+    final int whole = amount.floor();
+    final double fraction = amount - whole;
+
+    // Check for common fractions
+    String fractionStr = '';
+    const epsilon = 0.01;
+
+    if ((fraction - 0.125).abs() < epsilon) {
+      fractionStr = '1/8';
+    } else if ((fraction - 0.25).abs() < epsilon) {
+      fractionStr = '1/4';
+    } else if ((fraction - 0.333).abs() < 0.015) {
+      fractionStr = '1/3';
+    } else if ((fraction - 0.375).abs() < epsilon) {
+      fractionStr = '3/8';
+    } else if ((fraction - 0.5).abs() < epsilon) {
+      fractionStr = '1/2';
+    } else if ((fraction - 0.625).abs() < epsilon) {
+      fractionStr = '5/8';
+    } else if ((fraction - 0.666).abs() < 0.015) {
+      fractionStr = '2/3';
+    } else if ((fraction - 0.75).abs() < epsilon) {
+      fractionStr = '3/4';
+    } else if ((fraction - 0.875).abs() < epsilon) {
+      fractionStr = '7/8';
+    }
+
+    if (fractionStr.isNotEmpty) {
+      return whole > 0 ? '$whole $fractionStr' : fractionStr;
+    }
+
+    if (preferFraction) {
+      // If not a common fraction but we prefer fractions, we can try to round to nearest 8th
+      final eighths = (fraction * 8).round();
+      if (eighths > 0 && eighths < 8) {
+        final List<String> eighthStrs = [
+          '',
+          '1/8',
+          '1/4',
+          '3/8',
+          '1/2',
+          '5/8',
+          '3/4',
+          '7/8'
+        ];
+        fractionStr = eighthStrs[eighths];
+        return whole > 0 ? '$whole $fractionStr' : fractionStr;
+      }
+    }
+
+    // Fallback to decimal
+    return amount.toStringAsFixed(2).replaceAll(RegExp(r'\.?0+$'), '');
+  }
+
+  void _adjustServings(int newServings) {
+    if (newServings < 1 || _servings == 0) return;
+
+    final double ratio = newServings / _servings;
+
+    setState(() {
+      for (int i = 0; i < _ingredientAmountControllers.length; i++) {
+        final controller = _ingredientAmountControllers[i];
+        final unit = _ingredientUnitControllers[i].text.toLowerCase().trim();
+
+        final double? currentAmount = _parseAmount(controller.text);
+        if (currentAmount != null) {
+          final double newAmount = currentAmount * ratio;
+
+          // Prefer fractions for non-metric units
+          final bool preferFraction =
+              !['g', 'kg', 'ml', 'l', 'mg'].contains(unit);
+
+          controller.text = _formatAmount(
+            newAmount,
+            preferFraction: preferFraction,
+          );
+        }
+      }
+      _servings = newServings;
+    });
+  }
+
   Widget _buildCounter() {
-    return Row(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _counterButton(Icons.remove, () {
-          if (_servings > 1) {
-            setState(() => _servings--);
-          }
-        }),
-        Expanded(
-          child: Container(
-            margin: const EdgeInsets.symmetric(horizontal: 12.0),
-            height: 56.0,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              border: Border.all(color: const Color(0xFFEEEEEE)),
-              borderRadius: BorderRadius.circular(16.0),
-            ),
-            child: Text(
-              '$_servings',
-              style: const TextStyle(
-                fontSize: 18.0,
-                fontWeight: FontWeight.bold,
+        Row(
+          children: [
+            _counterButton(Icons.remove, () => _adjustServings(_servings - 1)),
+            Expanded(
+              child: Container(
+                margin: const EdgeInsets.symmetric(horizontal: 12.0),
+                height: 56.0,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  border: Border.all(color: const Color(0xFFEEEEEE)),
+                  borderRadius: BorderRadius.circular(16.0),
+                ),
+                child: Text(
+                  '$_servings',
+                  style: const TextStyle(
+                    fontSize: 18.0,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
               ),
             ),
+            _counterButton(Icons.add, () => _adjustServings(_servings + 1)),
+          ],
+        ),
+        const SizedBox(height: 8.0),
+        const Text(
+          'Ingredient quantities will be adjusted automatically',
+          style: TextStyle(
+            fontSize: 12.0,
+            color: Colors.grey,
+            fontStyle: FontStyle.italic,
           ),
         ),
-        _counterButton(Icons.add, () {
-          setState(() => _servings++);
-        }),
       ],
     );
   }
@@ -661,26 +794,31 @@ class _RecipeEditState extends State<RecipeEdit> {
   }
 
   Widget _buildIngredientRow(int index) {
+    const ingredientPadding =
+        EdgeInsets.symmetric(horizontal: 12.0, vertical: 16.0);
     return Padding(
       padding: const EdgeInsets.only(bottom: 12.0),
       child: Row(
         children: [
           Expanded(
-            flex: 3,
-            child: _buildTextField(_ingredientNameControllers[index], 'Name'),
-          ),
-          const SizedBox(width: 8.0),
-          SizedBox(
-            width: 60.0,
-            child: _buildTextField(_ingredientAmountControllers[index], '0'),
+            flex: 4,
+            child: _buildTextField(_ingredientNameControllers[index], 'Name',
+                contentPadding: ingredientPadding),
           ),
           const SizedBox(width: 8.0),
           Expanded(
             flex: 2,
+            child: _buildTextField(_ingredientAmountControllers[index], '0',
+                contentPadding: ingredientPadding),
+          ),
+          const SizedBox(width: 8.0),
+          Expanded(
+            flex: 3,
             child: Stack(
               alignment: Alignment.centerRight,
               children: [
-                _buildTextField(_ingredientUnitControllers[index], 'unit'),
+                _buildTextField(_ingredientUnitControllers[index], 'unit',
+                    contentPadding: ingredientPadding),
                 PopupMenuButton<String>(
                   icon: const Icon(Icons.arrow_drop_down, color: Colors.grey),
                   onSelected: (value) {

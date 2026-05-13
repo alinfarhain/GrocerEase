@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../globals/app_state.dart';
 import 'home_page.dart';
 import 'plan_page.dart';
 import 'grocery_list_screen.dart';
@@ -13,28 +14,28 @@ class MainNavigationShell extends StatefulWidget {
 }
 
 class _MainNavigationShellState extends State<MainNavigationShell> {
-  int _selectedIndex = 2; // Default to Grocery List tab
-
-  final List<Widget> _pages = [
-    const HomePage(),
-    const PlanPage(),
-    const GroceryListScreen(),
-    const PantryPage(),
-    const ProfileScreen(),
-  ];
-
-  void _onItemTapped(int index) {
-    setState(() {
-      _selectedIndex = index;
-    });
-  }
-
   @override
   Widget build(BuildContext context) {
+    final appState = AppState.of(context);
+    
+    final List<Widget> pages = [
+      const HomePage(),
+      const PlanPage(),
+      GroceryListScreen(
+        currency: appState.currency,
+        dietaryPreference: appState.dietaryPreference,
+      ),
+      const PantryPage(),
+      ProfileScreen(
+        onCurrencyChanged: appState.setCurrency,
+        onDietaryChanged: appState.setDietaryPreference,
+      ),
+    ];
+
     return Scaffold(
       body: IndexedStack(
-        index: _selectedIndex,
-        children: _pages,
+        index: appState.currentTabIndex,
+        children: pages,
       ),
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
@@ -48,8 +49,10 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
           backgroundColor: Colors.white,
           selectedItemColor: const Color(0xFF2E7D32),
           unselectedItemColor: Colors.grey.shade500,
-          currentIndex: _selectedIndex,
-          onTap: _onItemTapped,
+          currentIndex: appState.currentTabIndex,
+          onTap: (index) {
+            appState.setTabIndex(index);
+          },
           selectedLabelStyle: const TextStyle(
             fontSize: 12.0,
             fontWeight: FontWeight.w600,

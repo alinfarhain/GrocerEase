@@ -16,21 +16,28 @@ class MainPage extends StatefulWidget {
 }
 
 class _MainPageState extends State<MainPage> {
-  final List<Widget> _pages = [
-    const HomePage(),
-    const PlanPage(),
-    const GroceryListScreen(),
-    const PantryPage(),
-    const ProfileScreen(),
-  ];
-
   @override
   Widget build(BuildContext context) {
     final appState = AppState.of(context);
+
+    final List<Widget> pages = [
+      const HomePage(),
+      const PlanPage(),
+      GroceryListScreen(
+        currency: appState.currency,
+        dietaryPreference: appState.dietaryPreference,
+      ),
+      const PantryPage(),
+      ProfileScreen(
+        onCurrencyChanged: appState.setCurrency,
+        onDietaryChanged: appState.setDietaryPreference,
+      ),
+    ];
+
     return Scaffold(
       body: IndexedStack(
         index: appState.currentTabIndex,
-        children: _pages,
+        children: pages,
       ),
       bottomNavigationBar: Container(
         decoration: BoxDecoration(

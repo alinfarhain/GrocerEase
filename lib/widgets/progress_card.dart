@@ -5,6 +5,7 @@ class ProgressCard extends StatelessWidget {
   final double budget;
   final int checkedCount;
   final int totalCount;
+  final String currencySymbol;
 
   const ProgressCard({
     super.key,
@@ -12,6 +13,7 @@ class ProgressCard extends StatelessWidget {
     required this.budget,
     required this.checkedCount,
     required this.totalCount,
+    required this.currencySymbol,
   });
 
   @override
@@ -63,7 +65,7 @@ class ProgressCard extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
                   Text(
-                    'RM${spentTotal.toStringAsFixed(2)}',
+                    '$currencySymbol${spentTotal.toStringAsFixed(2)}',
                     style: const TextStyle(
                       fontSize: 26,
                       fontWeight: FontWeight.w800,
@@ -72,7 +74,7 @@ class ProgressCard extends StatelessWidget {
                     ),
                   ),
                   Text(
-                    'of RM${remaining.toStringAsFixed(2)} left',
+                    'of $currencySymbol${remaining.toStringAsFixed(2)} left',
                     style: TextStyle(
                       fontSize: 12,
                       color: Colors.grey.shade500,
