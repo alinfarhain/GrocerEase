@@ -11,7 +11,7 @@ class MonthlyPage extends StatefulWidget {
     super.key,
   });
 
-  final Map<String, dynamic> mealPlan;
+  final Map<String, List<Meal>> mealPlan;
   final bool isEditing;
   final void Function(String dateKey)? onDeleteMeal;
 
@@ -224,8 +224,7 @@ class _MonthlyPageState extends State<MonthlyPage> {
 
   Widget _buildSelectedMealCard() {
     final dateKey = DateFormat('yyyy-MM-dd').format(_selectedDate);
-    final dynamic rawMeals = widget.mealPlan[dateKey];
-    final meals = rawMeals is List ? rawMeals.cast<Meal>() : null;
+    final meals = widget.mealPlan[dateKey];
     
     if (meals == null || meals.isEmpty) {
       return Container(
