@@ -466,10 +466,12 @@ class _RecipeViewState extends State<RecipeView> {
                               [])
                               .map((ing) {
                             if (ing is Map) {
+                              final String name = ing['name']?.toString() ?? '';
+                              final String amount = ing['amount']?.toString() ?? '';
+                              final String unit = ing['unit']?.toString() ?? '';
                               return _buildIngredientItem(
-                                ing['name'].toString(),
-                                '${ing['amount'] ?? ''} ${ing['unit'] ?? ''}'
-                                    .trim(),
+                                name,
+                                '$amount $unit'.trim(),
                               );
                             }
                             return _buildIngredientItem(ing.toString(), '');
