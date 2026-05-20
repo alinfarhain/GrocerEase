@@ -1022,8 +1022,12 @@ class _MyRecipesState extends State<MyRecipes> {
           ),
           Expanded(
             child: GestureDetector(
-              onTap: () {
-                context.pushNamed('search-recipes');
+              onTap: () async {
+                // ✅ AWAIT the navigation — when the user comes back from
+                // Search Recipes (whether they saved something or not),
+                // reload recipes from Supabase immediately.
+                await context.pushNamed('search-recipes');
+                if (mounted) _loadRecipes();
               },
               child: Container(
                 decoration: BoxDecoration(
@@ -1072,10 +1076,12 @@ class _MyRecipesState extends State<MyRecipes> {
       if (maxBudget != null && price > maxBudget!) return false;
       final duration = (recipe['cookTimeMinutes'] ?? 0) as int;
       if (maxDuration != null && duration > maxDuration!) return false;
-      if (maxServings != null &&
-          (recipe['servings'] ?? 0) > maxServings!) return false;
-      if (maxCalories != null &&
-          (recipe['caloriesPerServing'] ?? 0) > maxCalories!) return false;
+      if (maxServings != null && (recipe['servings'] ?? 0) > maxServings!) {
+        return false;
+      }
+      if (maxCalories != null && (recipe['caloriesPerServing'] ?? 0) > maxCalories!) {
+        return false;
+      }
       if (selectedDifficulty != null &&
           recipe['difficulty'] != selectedDifficulty) return false;
       return true;
@@ -1087,216 +1093,223 @@ class _MyRecipesState extends State<MyRecipes> {
     filteredRecipes.where((r) => r['isFavourite'] != true).toList();
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF9F9F9),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _buildHeader(),
-              Padding(
-                padding:
-                const EdgeInsets.symmetric(horizontal: 24.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      mainAxisAlignment:
-                      MainAxisAlignment.spaceBetween,
+        backgroundColor: const Color(0xFFF9F9F9),
+        body: SafeArea(
+          // ✅ Pull-to-refresh: drag down to reload recipes from Supabase
+          child: RefreshIndicator(
+            onRefresh: _loadRecipes,
+            color: const Color(0xFF1BAB52),
+            child: SingleChildScrollView(
+              // physics needed so RefreshIndicator works even when list is short
+              physics: const AlwaysScrollableScrollPhysics(),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _buildHeader(),
+                  Padding(
+                    padding:
+                    const EdgeInsets.symmetric(horizontal: 24.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Column(
-                          crossAxisAlignment:
-                          CrossAxisAlignment.start,
+                        Row(
+                          mainAxisAlignment:
+                          MainAxisAlignment.spaceBetween,
                           children: [
-                            Text(
-                              'My Recipes',
-                              style: TextStyle(
-                                fontSize: 24.0,
-                                fontWeight: FontWeight.bold,
-                                color: Color(0xFF003D33),
-                              ),
+                            const Column(
+                              crossAxisAlignment:
+                              CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'My Recipes',
+                                  style: TextStyle(
+                                    fontSize: 24.0,
+                                    fontWeight: FontWeight.bold,
+                                    color: Color(0xFF003D33),
+                                  ),
+                                ),
+                                SizedBox(height: 4.0),
+                                Text(
+                                  'View Saved Recipes',
+                                  style: TextStyle(
+                                    fontSize: 14.0,
+                                    color: Colors.grey,
+                                  ),
+                                ),
+                              ],
                             ),
-                            SizedBox(height: 4.0),
-                            Text(
-                              'View Saved Recipes',
-                              style: TextStyle(
-                                fontSize: 14.0,
-                                color: Colors.grey,
-                              ),
-                            ),
+                            _buildEditToggle(),
                           ],
                         ),
-                        _buildEditToggle(),
-                      ],
-                    ),
-                    const SizedBox(height: 24.0),
-                    _buildToggle(),
-                    const SizedBox(height: 24.0),
-                    _buildSearchBar(),
-                    const SizedBox(height: 24.0),
-                    if (showFilters) _buildFilterForm(),
-                    _buildAddButton(),
-                    const SizedBox(height: 24.0),
+                        const SizedBox(height: 24.0),
+                        _buildToggle(),
+                        const SizedBox(height: 24.0),
+                        _buildSearchBar(),
+                        const SizedBox(height: 24.0),
+                        if (showFilters) _buildFilterForm(),
+                        _buildAddButton(),
+                        const SizedBox(height: 24.0),
 
-                    // ✅ NEW: Loading state
-                    if (_isLoading)
-                      const Center(
-                        child: Padding(
-                          padding: EdgeInsets.symmetric(vertical: 40.0),
-                          child: CircularProgressIndicator(
-                            color: Color(0xFF1BAB52),
-                          ),
-                        ),
-                      )
-                    // ✅ NEW: Error state
-                    else if (_errorMessage != null)
-                      Center(
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(
-                              vertical: 40.0),
-                          child: Column(
-                            children: [
-                              const Icon(Icons.error_outline,
-                                  color: Colors.red, size: 48),
-                              const SizedBox(height: 12),
-                              Text(
-                                _errorMessage!,
-                                style: const TextStyle(
-                                    color: Colors.red),
-                                textAlign: TextAlign.center,
+                        // ✅ NEW: Loading state
+                        if (_isLoading)
+                          const Center(
+                            child: Padding(
+                              padding: EdgeInsets.symmetric(vertical: 40.0),
+                              child: CircularProgressIndicator(
+                                color: Color(0xFF1BAB52),
                               ),
-                              const SizedBox(height: 16),
-                              ElevatedButton(
-                                onPressed: _loadRecipes,
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor:
-                                  const Color(0xFF1BAB52),
-                                ),
-                                child: const Text('Retry',
-                                    style: TextStyle(
-                                        color: Colors.white)),
-                              ),
-                            ],
-                          ),
-                        ),
-                      )
-                    else ...[
-                        // Favorites section
-                        if (favorites.isNotEmpty) ...[
-                          _buildSectionHeader('Favourites',
-                              icon: Icons.star),
-                          const SizedBox(height: 16.0),
-                          ...favorites.map(
-                                  (r) => _buildRecipeCard(r)),
-                          const SizedBox(height: 24.0),
-                        ],
-                        // All recipes section
-                        if (allRecipes.isNotEmpty) ...[
-                          _buildSectionHeader(
-                              'All Recipes (${allRecipes.length})'),
-                          const SizedBox(height: 16.0),
-                          ...allRecipes.map(
-                                  (r) => _buildRecipeCard(r)),
-                          const SizedBox(height: 24.0),
-                        ],
-                        // Empty state
-                        if (filteredRecipes.isEmpty)
+                            ),
+                          )
+                        // ✅ NEW: Error state
+                        else if (_errorMessage != null)
                           Center(
                             child: Padding(
                               padding: const EdgeInsets.symmetric(
                                   vertical: 40.0),
                               child: Column(
                                 children: [
-                                  const Icon(
-                                    Icons.restaurant_menu_outlined,
-                                    color: Colors.grey,
-                                    size: 48,
-                                  ),
+                                  const Icon(Icons.error_outline,
+                                      color: Colors.red, size: 48),
                                   const SizedBox(height: 12),
-                                  const Text(
-                                    'No recipes yet.\nTap "Add New Recipe" to get started!',
-                                    style: TextStyle(
-                                      color: Colors.grey,
-                                      fontSize: 16.0,
-                                    ),
+                                  Text(
+                                    _errorMessage!,
+                                    style: const TextStyle(
+                                        color: Colors.red),
                                     textAlign: TextAlign.center,
+                                  ),
+                                  const SizedBox(height: 16),
+                                  ElevatedButton(
+                                    onPressed: _loadRecipes,
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor:
+                                      const Color(0xFF1BAB52),
+                                    ),
+                                    child: const Text('Retry',
+                                        style: TextStyle(
+                                            color: Colors.white)),
                                   ),
                                 ],
                               ),
                             ),
-                          ),
+                          )
+                        else ...[
+                            // Favorites section
+                            if (favorites.isNotEmpty) ...[
+                              _buildSectionHeader('Favourites',
+                                  icon: Icons.star),
+                              const SizedBox(height: 16.0),
+                              ...favorites.map(
+                                      (r) => _buildRecipeCard(r)),
+                              const SizedBox(height: 24.0),
+                            ],
+                            // All recipes section
+                            if (allRecipes.isNotEmpty) ...[
+                              _buildSectionHeader(
+                                  'All Recipes (${allRecipes.length})'),
+                              const SizedBox(height: 16.0),
+                              ...allRecipes.map(
+                                      (r) => _buildRecipeCard(r)),
+                              const SizedBox(height: 24.0),
+                            ],
+                            // Empty state
+                            if (filteredRecipes.isEmpty)
+                              Center(
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                      vertical: 40.0),
+                                  child: Column(
+                                    children: [
+                                      const Icon(
+                                        Icons.restaurant_menu_outlined,
+                                        color: Colors.grey,
+                                        size: 48,
+                                      ),
+                                      const SizedBox(height: 12),
+                                      const Text(
+                                        'No recipes yet.\nTap "Add New Recipe" to get started!',
+                                        style: TextStyle(
+                                          color: Colors.grey,
+                                          fontSize: 16.0,
+                                        ),
+                                        textAlign: TextAlign.center,
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                          ],
                       ],
-                  ],
-                ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        bottomNavigationBar: Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.05),
+                blurRadius: 10.0,
+                offset: const Offset(0.0, -2),
+              ),
+            ],
+          ),
+          child: BottomNavigationBar(
+            type: BottomNavigationBarType.fixed,
+            backgroundColor: Colors.white,
+            selectedItemColor: const Color(0xFF1BAB52),
+            unselectedItemColor: Colors.grey,
+            currentIndex: 1,
+            onTap: (index) {
+              appState.setTabIndex(index);
+              context.go('/');
+            },
+            selectedLabelStyle: const TextStyle(
+              fontSize: 12.0,
+              fontWeight: FontWeight.w600,
+            ),
+            unselectedLabelStyle: const TextStyle(fontSize: 12.0),
+            items: const [
+              BottomNavigationBarItem(
+                icon: Icon(Icons.home_outlined),
+                activeIcon: Icon(Icons.home),
+                label: 'Home',
+              ),
+              BottomNavigationBarItem(
+                icon: Icon(Icons.calendar_today_outlined),
+                label: 'Plan',
+              ),
+              BottomNavigationBarItem(
+                icon: Icon(Icons.shopping_cart_outlined),
+                label: 'List',
+              ),
+              BottomNavigationBarItem(
+                icon: Icon(Icons.inventory_2_outlined),
+                label: 'Pantry',
+              ),
+              BottomNavigationBarItem(
+                icon: Icon(Icons.person_outline),
+                label: 'Profile',
               ),
             ],
           ),
         ),
-      ),
-      bottomNavigationBar: Container(
-        decoration: BoxDecoration(
-          color: Colors.white,
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.05),
-              blurRadius: 10.0,
-              offset: const Offset(0.0, -2),
-            ),
-          ],
-        ),
-        child: BottomNavigationBar(
-          type: BottomNavigationBarType.fixed,
-          backgroundColor: Colors.white,
-          selectedItemColor: const Color(0xFF1BAB52),
-          unselectedItemColor: Colors.grey,
-          currentIndex: 1,
-          onTap: (index) {
-            appState.setTabIndex(index);
-            context.go('/');
-          },
-          selectedLabelStyle: const TextStyle(
-            fontSize: 12.0,
-            fontWeight: FontWeight.w600,
+        floatingActionButton: FloatingActionButton(
+          onPressed: () {},
+          backgroundColor: const Color(0xFFFF7043),
+          elevation: 4.0,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20.0),
           ),
-          unselectedLabelStyle: const TextStyle(fontSize: 12.0),
-          items: const [
-            BottomNavigationBarItem(
-              icon: Icon(Icons.home_outlined),
-              activeIcon: Icon(Icons.home),
-              label: 'Home',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.calendar_today_outlined),
-              label: 'Plan',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.shopping_cart_outlined),
-              label: 'List',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.inventory_2_outlined),
-              label: 'Pantry',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.person_outline),
-              label: 'Profile',
-            ),
-          ],
+          child: const Icon(
+            Icons.qr_code_scanner,
+            color: Colors.white,
+            size: 28.0,
+          ),
         ),
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () {},
-        backgroundColor: const Color(0xFFFF7043),
-        elevation: 4.0,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20.0),
-        ),
-        child: const Icon(
-          Icons.qr_code_scanner,
-          color: Colors.white,
-          size: 28.0,
-        ),
-      ),
-    );
-  }
+      );
+    }
 }

@@ -732,7 +732,15 @@ class _RecipeEditState extends State<RecipeEdit> {
     _durationController = TextEditingController(
       text: (widget.recipe['cookTimeMinutes'] ?? 0).toString(),
     );
-    _budgetController = TextEditingController(text: '15');
+
+    // ✅ FIX: Read budget from recipe data instead of hardcoding '15'
+    // Sources (in priority order):
+    //   1. 'budget'  — from Spoonacular mapping (already in RM)
+    //   2. 'price'   — legacy field (e.g. 'RM15' → strip 'RM')
+    //   3. fallback  — empty string so user knows to enter it
+    final rawBudget = _parseBudget(widget.recipe);
+    _budgetController = TextEditingController(text: rawBudget);
+
     _caloriesController = TextEditingController(
       text: (widget.recipe['caloriesPerServing'] ?? 0).toString(),
     );
@@ -741,7 +749,7 @@ class _RecipeEditState extends State<RecipeEdit> {
     _imagePath = widget.recipe['image'];
 
     _selectedTools.addAll(List<String>.from(
-      widget.recipe['tools'] ?? ['Pot', 'Pan'],
+      widget.recipe['tools'] ?? [],
     ));
 
     final instructions = List<String>.from(widget.recipe['instructions'] ?? []);
@@ -767,6 +775,35 @@ class _RecipeEditState extends State<RecipeEdit> {
         }
       }
     }
+  }
+
+  /// Extracts and cleans the budget value from a recipe map.
+  /// Handles RM prefix, USD conversion, and various field names.
+  String _parseBudget(Map<String, dynamic> recipe) {
+    // Try 'budget' field first (Spoonacular already converts to RM)
+    final budget = recipe['budget']?.toString().trim() ?? '';
+    if (budget.isNotEmpty && budget != '0' && budget != '0.0') {
+      // Remove any RM prefix if present
+      final cleaned = budget.replaceAll('RM', '').trim();
+      final value = double.tryParse(cleaned);
+      if (value != null && value > 0) {
+        // Round to 2 decimal places and remove trailing zeros
+        return value.toStringAsFixed(2).replaceAll(RegExp(r'\.?0+$'), '');
+      }
+    }
+
+    // Try 'price' field (legacy, e.g. 'RM15' or '15')
+    final price = recipe['price']?.toString().trim() ?? '';
+    if (price.isNotEmpty) {
+      final cleaned = price.replaceAll('RM', '').replaceAll(RegExp('[^0-9.]'), '');
+      final value = double.tryParse(cleaned);
+      if (value != null && value > 0) {
+        return value.toStringAsFixed(2).replaceAll(RegExp(r'\.?0+$'), '');
+      }
+    }
+
+    // No budget data — return empty so user knows to fill it in
+    return '';
   }
 
   void _showAddToolDialog() {
@@ -993,7 +1030,7 @@ class _RecipeEditState extends State<RecipeEdit> {
             _buildNumberField(_durationController),
             const SizedBox(height: 24.0),
             _buildLabelWithIcon(Icons.attach_money, 'Estimated Budget (RM)'),
-            _buildTextField(_budgetController, '15'),
+            _buildTextField(_budgetController, 'e.g. 25.00'),
             const SizedBox(height: 24.0),
             _buildLabelWithIcon(Icons.people_outline, 'Number of Servings'),
             _buildCounter(),
