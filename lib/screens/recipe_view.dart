@@ -241,14 +241,23 @@ class _RecipeViewState extends State<RecipeView> {
                     ),
                   if (isFromSearch)
                     GestureDetector(
-                      onTap: () {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Recipe added to Saved Recipes!'),
-                            backgroundColor: Color(0xFF1BAB52),
-                          ),
-                        );
-                        Navigator.pop(context);
+                      onTap: () async {
+                        try {
+                          await RecipeService.saveSearchedRecipe(_currentRecipe);
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('✅ Recipe saved to My Recipes!'),
+                                backgroundColor: Color(0xFF1BAB52),
+                              ),
+                            );
+                            Navigator.pop(context);
+                          }
+                        } catch (e) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('❌ Failed to save: $e')),
+                          );
+                        }
                       },
                       child: Container(
                         padding: const EdgeInsets.symmetric(

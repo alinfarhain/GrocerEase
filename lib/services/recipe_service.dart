@@ -120,4 +120,22 @@ class RecipeService {
     }
     return [];
   }
+
+  static Future<void> saveSearchedRecipe(Map<String, dynamic> recipe) async {
+    final userId = _supabase.auth.currentUser?.id;
+    await _supabase.from('recipes').insert({
+      'user_id': userId,
+      'recipe_name': recipe['name'],
+      'image_url': recipe['image'],
+      'cooking_duration': recipe['cookTimeMinutes'] ?? 0,
+      'estimated_budget': 0.0,
+      'servings': recipe['servings'] ?? 4,
+      'calories_per_serving': recipe['caloriesPerServing'] ?? 0,
+      'difficulty_level': recipe['difficulty'] ?? 'Medium',
+      'tools_required': [],
+      'ingredients': recipe['ingredients'] ?? [],
+      'cooking_steps': recipe['instructions'] ?? [],
+    });
+  }
+
 }
