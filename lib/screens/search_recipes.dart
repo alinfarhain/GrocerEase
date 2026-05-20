@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
-import 'dart:math' as math;
+import '../services/recipe_service.dart';
 import '../globals/app_state.dart';
 
 class SearchRecipes extends StatefulWidget {
@@ -13,7 +13,7 @@ class SearchRecipes extends StatefulWidget {
 }
 
 class _SearchRecipesState extends State<SearchRecipes> {
-  static const String _apiKey = 'e6772569c1144f8283b6fd9e92e13e07';
+  // API key is managed in RecipeService.spoonacularApiKey
 
   final TextEditingController _searchController = TextEditingController();
   List<Map<String, dynamic>> _searchResults = [];
@@ -58,11 +58,11 @@ class _SearchRecipesState extends State<SearchRecipes> {
       final uri = Uri.parse(
         'https://api.spoonacular.com/recipes/complexSearch'
             '?query=${Uri.encodeComponent(query)}'
-            '&apiKey=$_apiKey'
+            '&apiKey=${RecipeService.spoonacularApiKey}'
             '&number=15'
             '&addRecipeInformation=true'
             '&fillIngredients=true'
-            '&addNutritionInformation=true',   // ← calories data
+            '&addNutritionInformation=true', // ✅ returns calories in search results
       );
 
       final response = await http.get(uri).timeout(const Duration(seconds: 15));
@@ -104,275 +104,13 @@ class _SearchRecipesState extends State<SearchRecipes> {
   }
 
   // ── SPOONACULAR → LOCAL MAP ───────────────────────────────────────────────
+  // Delegates ALL mapping/conversion logic to RecipeService.
+  // This keeps search_recipes.dart clean and avoids duplicated code.
+  // RecipeView automatically calls RecipeService.fetchSpoonacularRecipe(id)
+  // to get full details (steps, tools, calories) when a recipe is opened.
 
   Map<String, dynamic> _mapSpoonacularRecipe(Map<String, dynamic> meal) {
-    // 1. Extract cooking steps AND tools from analyzedInstructions
-    final toolsSet = <String>{};
-    final instructions = <String>[];
-
-    final analyzedInstructions = meal['analyzedInstructions'] as List? ?? [];
-    for (final group in analyzedInstructions) {
-      if (group is! Map) continue;
-      final steps = group['steps'] as List? ?? [];
-      for (final step in steps) {
-        if (step is! Map) continue;
-
-        // Actual cooking step text
-        final text = step['step']?.toString().trim() ?? '';
-        if (text.isNotEmpty) instructions.add(text);
-
-        // Extract kitchen tools from equipment list
-        final equipment = step['equipment'] as List? ?? [];
-        for (final eq in equipment) {
-          if (eq is! Map) continue;
-          final name = eq['name']?.toString().trim() ?? '';
-          if (name.isNotEmpty) toolsSet.add(_capitalize(name));
-        }
-      }
-    }
-
-    // Fallback: if no analyzed instructions, parse plain text 'instructions' field
-    if (instructions.isEmpty) {
-      final plain = (meal['instructions'] as String? ?? '')
-          .replaceAll(RegExp(r'<[^>]*>'), '') // strip HTML tags
-          .trim();
-      if (plain.isNotEmpty) {
-        // Split by line breaks or numbered list patterns
-        final parts = plain
-            .split(RegExp(r'\r?\n+|\d+\.\s+'))
-            .map((s) => s.trim())
-            .where((s) => s.length > 10)
-            .toList();
-        instructions.addAll(parts.isEmpty ? [plain] : parts);
-      }
-    }
-
-    // 2. Map ingredients — use Spoonacular's pre-converted metric measures
-    final ingredients = <Map<String, dynamic>>[];
-    for (final ing in (meal['extendedIngredients'] as List? ?? [])) {
-      if (ing is! Map) continue;
-
-      double amount;
-      String unit;
-
-      // Prefer the metric measure Spoonacular provides
-      final metricMeasure = ing['measures']?['metric'];
-      if (metricMeasure != null && metricMeasure['amount'] != null) {
-        amount = (metricMeasure['amount'] as num).toDouble();
-        unit = metricMeasure['unitShort']?.toString() ?? '';
-      } else {
-        amount = (ing['amount'] as num?)?.toDouble() ?? 0;
-        unit = ing['unit']?.toString() ?? '';
-      }
-
-      // Manually convert any remaining US imperial units
-      final converted = _convertToMetric(amount, unit);
-      amount = converted['amount'] as double;
-      unit = converted['unit'] as String;
-
-      // Normalize unit display names
-      unit = _normalizeUnit(unit);
-
-      // Format the number (fractions for non-metric, decimals for metric)
-      final formatted = _formatIngredientAmount(amount, unit);
-
-      ingredients.add({
-        'name': ing['name']?.toString() ?? '',
-        'amount': formatted,
-        'unit': unit,
-      });
-    }
-
-    // 3. Extract calories per serving from nutrition block
-    int caloriesPerServing = 0;
-    final nutrition = meal['nutrition'];
-    if (nutrition is Map) {
-      final nutrients = nutrition['nutrients'] as List? ?? [];
-      for (final n in nutrients) {
-        if (n is Map &&
-            (n['name'] as String? ?? '').toLowerCase() == 'calories') {
-          caloriesPerServing = ((n['amount'] as num?)?.toDouble() ?? 0).round();
-          break;
-        }
-      }
-    }
-
-    // 4. Estimate difficulty from cook time
-    final readyInMinutes = (meal['readyInMinutes'] as int?) ?? 30;
-    String difficulty = 'Medium';
-    if (readyInMinutes <= 20) difficulty = 'Easy';
-    if (readyInMinutes > 60) difficulty = 'Hard';
-
-    // 5. Estimate RM budget from Spoonacular's USD price per serving
-    // pricePerServing is in USD cents; 1 USD ≈ 4.7 MYR
-    final servings = (meal['servings'] as int?) ?? 4;
-    final priceUSDCents =
-        (meal['pricePerServing'] as num?)?.toDouble() ?? 0;
-    final budgetRM = (priceUSDCents / 100) * 4.7 * servings;
-    final budget =
-    budgetRM > 0 ? budgetRM.toStringAsFixed(2) : '0';
-
-    return {
-      'id': meal['id']?.toString(),
-      'name': meal['title'] ?? '',
-      'image': meal['image'],
-      'cookTimeMinutes': readyInMinutes,
-      'prepTimeMinutes': 0,
-      'servings': servings,
-      'caloriesPerServing': caloriesPerServing,
-      'difficulty': difficulty,
-      'tools': toolsSet.toList(),
-      'ingredients': ingredients,
-      'instructions': instructions,
-      'mealType':
-      List<String>.from((meal['dishTypes'] as List? ?? []).take(2)),
-      'budget': budget,
-      'isFromSearch': true,
-      'sourceUrl': meal['sourceUrl'] ?? '',
-    };
-  }
-
-  // ── UNIT HELPERS ──────────────────────────────────────────────────────────
-
-  /// Converts US imperial amounts to metric. Returns {'amount': double, 'unit': String}.
-  Map<String, dynamic> _convertToMetric(double amount, String unit) {
-    switch (unit.toLowerCase().trim()) {
-    // Weight
-      case 'oz':
-      case 'ounce':
-      case 'ounces':
-        return {'amount': _round(amount * 28.3495), 'unit': 'g'};
-      case 'lb':
-      case 'lbs':
-      case 'pound':
-      case 'pounds':
-        final g = amount * 453.592;
-        if (g >= 1000) return {'amount': _round(amount * 0.453592, dp: 2), 'unit': 'kg'};
-        return {'amount': _round(g), 'unit': 'g'};
-      case 'st':
-      case 'stone':
-      case 'stones':
-        return {'amount': _round(amount * 6.35029, dp: 2), 'unit': 'kg'};
-
-    // Volume
-      case 'fl oz':
-      case 'fluid ounce':
-      case 'fluid ounces':
-        return {'amount': _round(amount * 29.5735), 'unit': 'ml'};
-      case 'pt':
-      case 'pint':
-      case 'pints':
-        final mlPt = amount * 473.176;
-        if (mlPt >= 1000) return {'amount': _round(amount * 0.473176, dp: 2), 'unit': 'l'};
-        return {'amount': _round(mlPt), 'unit': 'ml'};
-      case 'qt':
-      case 'quart':
-      case 'quarts':
-        final mlQt = amount * 946.353;
-        if (mlQt >= 1000) return {'amount': _round(amount * 0.946353, dp: 2), 'unit': 'l'};
-        return {'amount': _round(mlQt), 'unit': 'ml'};
-      case 'gal':
-      case 'gallon':
-      case 'gallons':
-        return {'amount': _round(amount * 3.78541, dp: 2), 'unit': 'l'};
-
-    // Temperature
-      case 'f':
-      case '°f':
-      case 'fahrenheit':
-        return {'amount': _round((amount - 32) * 5 / 9, dp: 1), 'unit': '°C'};
-
-      default:
-        return {'amount': amount, 'unit': unit};
-    }
-  }
-
-  double _round(double value, {int dp = 1}) {
-    final factor = math.pow(10, dp).toDouble();
-    return (value * factor).round() / factor;
-  }
-
-  /// Normalizes unit display names.
-  String _normalizeUnit(String unit) {
-    switch (unit.toLowerCase().trim()) {
-      case 'cups':        return 'cup';
-      case 'tablespoon':
-      case 'tablespoons':
-      case 'tbsps':
-      case 'tbs':         return 'tbsp';
-      case 'teaspoon':
-      case 'teaspoons':
-      case 'tsps':        return 'tsp';
-      case 'servings':    return 'serving';
-      case 'grams':       return 'g';
-      case 'kilograms':   return 'kg';
-      case 'milligrams':  return 'mg';
-      case 'milliliters':
-      case 'millilitres': return 'ml';
-      case 'liters':
-      case 'litres':      return 'l';
-      default:            return unit;
-    }
-  }
-
-  /// Formats a number: decimals for metric units, fractions for everything else.
-  String _formatIngredientAmount(double amount, String unit) {
-    if (amount <= 0) return '0';
-
-    const metricUnits = {'g', 'kg', 'mg', 'ml', 'l', 'cl', '°c'};
-    if (metricUnits.contains(unit.toLowerCase())) {
-      if (amount == amount.floorToDouble()) return amount.toInt().toString();
-      return amount.toStringAsFixed(1).replaceAll(RegExp(r'\.?0+$'), '');
-    }
-
-    return _toFraction(amount);
-  }
-
-  /// Converts a decimal to a readable fraction string, e.g. 1.5 → "1 1/2".
-  String _toFraction(double amount) {
-    if (amount <= 0) return '0';
-
-    final int whole = amount.floor();
-    final double frac = amount - whole;
-
-    if (frac < 0.01) return whole.toString();
-
-    final fractionMap = {
-      0.125: '1/8',
-      0.25:  '1/4',
-      0.333: '1/3',
-      0.375: '3/8',
-      0.5:   '1/2',
-      0.625: '5/8',
-      0.667: '2/3',
-      0.75:  '3/4',
-      0.875: '7/8',
-    };
-
-    String fracStr = '';
-    for (final entry in fractionMap.entries) {
-      if ((frac - entry.key).abs() < 0.025) {
-        fracStr = entry.value;
-        break;
-      }
-    }
-
-    if (fracStr.isEmpty) {
-      final eighths = (frac * 8).round().clamp(1, 7);
-      const e = ['', '1/8', '1/4', '3/8', '1/2', '5/8', '3/4', '7/8'];
-      fracStr = e[eighths];
-    }
-
-    return whole > 0 ? '$whole $fracStr' : fracStr;
-  }
-
-  /// Capitalizes each word (for tool names).
-  String _capitalize(String s) {
-    if (s.isEmpty) return s;
-    return s.split(' ').map((w) {
-      if (w.isEmpty) return w;
-      return w[0].toUpperCase() + w.substring(1).toLowerCase();
-    }).join(' ');
+    return RecipeService.mapSpoonacularSearchResult(meal);
   }
 
   // ── FILTERS ───────────────────────────────────────────────────────────────

@@ -17,79 +17,83 @@ class _RecipeViewState extends State<RecipeView> {
   late Map<String, dynamic> _currentRecipe;
   bool _isLoading = false;
 
-  // ✅ Tracks the displayed servings — changes update budget & calories
-  int _displayServings = 4;
-
   @override
   void initState() {
     super.initState();
     _currentRecipe = RecipeService.normalize(
       Map<String, dynamic>.from(widget.recipe),
     );
-    // Start with the recipe's original servings
-    _displayServings = (_currentRecipe['servings'] as int?) ?? 4;
 
-    // Refresh from Supabase if this is a saved recipe (has UUID id)
     final id = _currentRecipe['id'];
-    if (id != null && id is String && id.contains('-')) {
+    final isFromSearch = widget.recipe['isFromSearch'] == true;
+
+    if (isFromSearch && id != null && id is String && !id.contains('-')) {
+      // ✅ Spoonacular numeric ID → fetch FULL details (steps, tools, calories)
+      // The complexSearch only gave us basic info; this call gets everything.
+      _fetchSpoonacularDetails(id);
+    } else if (id != null && id is String && id.contains('-')) {
+      // Supabase UUID → refresh saved recipe
       _refreshFromSupabase(id);
     }
   }
 
-  Future<void> _refreshFromSupabase(String id) async {
+  // ── DATA FETCHING ─────────────────────────────────────────────────────────
+
+  /// Fetches full recipe details from Spoonacular (steps, tools, calories).
+  /// This is the KEY fix — complexSearch doesn't return these reliably.
+  Future<void> _fetchSpoonacularDetails(String spoonacularId) async {
     setState(() => _isLoading = true);
     try {
-      final fresh = await RecipeService.getRecipeById(id);
-      if (fresh != null && mounted) {
-        setState(() {
-          _currentRecipe = fresh;
-          _displayServings = (fresh['servings'] as int?) ?? _displayServings;
-        });
+      final full = await RecipeService.fetchSpoonacularRecipe(spoonacularId);
+      if (full != null && mounted) {
+        setState(() => _currentRecipe = full);
       }
     } catch (_) {
-      // Fall back to passed-in data silently
+      // Keep showing basic data on error
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // CALCULATED DISPLAY VALUES
-  // ─────────────────────────────────────────────────────────────────────────
+  /// Refreshes a user's saved recipe from Supabase.
+  Future<void> _refreshFromSupabase(String id) async {
+    setState(() => _isLoading = true);
+    try {
+      final fresh = await RecipeService.getRecipeById(id);
+      if (fresh != null && mounted) {
+        setState(() => _currentRecipe = fresh);
+      }
+    } catch (_) {} finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
 
-  /// Total budget for _displayServings.
-  /// Spoonacular: uses budgetPerServing × _displayServings
-  /// User recipe: uses stored total budget string
+  // ── DISPLAY HELPERS ───────────────────────────────────────────────────────
+
   String get _budgetDisplay {
-    // Spoonacular recipe — has per-serving RM value
-    final budgetPerServing =
-    (_currentRecipe['budgetPerServing'] as num?)?.toDouble();
-    if (budgetPerServing != null && budgetPerServing > 0) {
-      final total = budgetPerServing * _displayServings;
-      return 'RM${total.toStringAsFixed(2)}';
-    }
-    // User's own recipe or legacy data — stored as total string
-    if (_currentRecipe['price'] != null) {
-      final p = _currentRecipe['price'].toString().trim();
-      return p.startsWith('RM') ? p : 'RM$p';
-    }
-    final b = _currentRecipe['budget']?.toString() ?? '0';
-    if (b == '0' || b == '0.0' || b.isEmpty) return 'N/A';
+    final b = (_currentRecipe['budget'] ?? _currentRecipe['price'] ?? '0')
+        .toString()
+        .replaceAll('RM', '')
+        .trim();
+    if (b.isEmpty || b == '0' || b == '0.0') return 'N/A';
     return 'RM$b';
   }
 
-  /// Calories per serving (stays constant, label says "per serving").
-  int get _caloriesPerServing =>
-      (_currentRecipe['caloriesPerServing'] as int?) ??
-          (_currentRecipe['calories'] as int?) ??
-          0;
+  String get _caloriesDisplay {
+    final c = (_currentRecipe['caloriesPerServing'] ??
+        _currentRecipe['calories'] ??
+        0) as int;
+    return c == 0 ? 'N/A' : '$c kcal';
+  }
 
-  /// Total calories for _displayServings.
-  int get _totalCalories => _caloriesPerServing * _displayServings;
+  String get _timeDisplay {
+    final cook = (_currentRecipe['cookTimeMinutes'] as int?) ?? 0;
+    final prep = (_currentRecipe['prepTimeMinutes'] as int?) ?? 0;
+    final total = cook + prep;
+    return total > 0 ? '${total}m' : '${cook}m';
+  }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // WIDGET HELPERS
-  // ─────────────────────────────────────────────────────────────────────────
+  // ── WIDGET HELPERS ────────────────────────────────────────────────────────
 
   Widget _buildInfoItem(
       IconData icon,
@@ -114,78 +118,39 @@ class _RecipeViewState extends State<RecipeView> {
           style: const TextStyle(
             fontWeight: FontWeight.bold,
             color: Color(0xFF003D33),
-            fontSize: 14.0,
+            fontSize: 13.0,
           ),
+          textAlign: TextAlign.center,
         ),
         Text(label,
-            style: const TextStyle(color: Colors.grey, fontSize: 12.0)),
-      ],
-    );
-  }
-
-  // ✅ Interactive servings adjuster — tapping +/- updates budget & calories
-  Widget _buildServingsAdjuster() {
-    return Column(
-      children: [
-        Container(
-          padding:
-          const EdgeInsets.symmetric(horizontal: 8.0, vertical: 6.0),
-          decoration: BoxDecoration(
-            color: const Color(0xFFE8F5E9),
-            borderRadius: BorderRadius.circular(12.0),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              GestureDetector(
-                onTap: () {
-                  if (_displayServings > 1) {
-                    setState(() => _displayServings--);
-                  }
-                },
-                child: const Icon(Icons.remove,
-                    size: 16.0, color: Color(0xFF1BAB52)),
-              ),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 10.0),
-                child: Text(
-                  '$_displayServings',
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF003D33),
-                    fontSize: 14.0,
-                  ),
-                ),
-              ),
-              GestureDetector(
-                onTap: () => setState(() => _displayServings++),
-                child: const Icon(Icons.add,
-                    size: 16.0, color: Color(0xFF1BAB52)),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 8.0),
-        const Text('Servings',
-            style: TextStyle(color: Colors.grey, fontSize: 12.0)),
+            style: const TextStyle(color: Colors.grey, fontSize: 11.0)),
       ],
     );
   }
 
   Widget _buildToolChip(String label) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+      padding: const EdgeInsets.symmetric(horizontal: 14.0, vertical: 8.0),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(12.0),
         border: Border.all(color: const Color(0xFFEEEEEE)),
       ),
-      child: Text(
-        label,
-        style: const TextStyle(
-          color: Color(0xFF003D33),
-          fontWeight: FontWeight.w500,
-        ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.kitchen_outlined,
+              size: 14.0, color: Color(0xFF1BAB52)),
+          const SizedBox(width: 6.0),
+          Text(
+            label,
+            style: const TextStyle(
+              color: Color(0xFF003D33),
+              fontWeight: FontWeight.w500,
+              fontSize: 13.0,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -213,14 +178,17 @@ class _RecipeViewState extends State<RecipeView> {
               ),
             ),
           ),
-          const SizedBox(width: 16.0),
+          const SizedBox(width: 14.0),
           Expanded(
-            child: Text(
-              instruction,
-              style: const TextStyle(
-                color: Color(0xFF003D33),
-                fontSize: 15.0,
-                height: 1.5,
+            child: Padding(
+              padding: const EdgeInsets.only(top: 4.0),
+              child: Text(
+                instruction,
+                style: const TextStyle(
+                  color: Color(0xFF003D33),
+                  fontSize: 14.0,
+                  height: 1.5,
+                ),
               ),
             ),
           ),
@@ -243,11 +211,11 @@ class _RecipeViewState extends State<RecipeView> {
 
   Widget _buildIngredientItem(String name, String measurement) {
     return Container(
-      margin: const EdgeInsets.only(bottom: 12.0),
-      padding: const EdgeInsets.all(16.0),
+      margin: const EdgeInsets.only(bottom: 10.0),
+      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 14.0),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(16.0),
+        borderRadius: BorderRadius.circular(14.0),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -258,47 +226,73 @@ class _RecipeViewState extends State<RecipeView> {
               style: const TextStyle(
                 color: Color(0xFF003D33),
                 fontWeight: FontWeight.w500,
+                fontSize: 14.0,
               ),
             ),
           ),
-          Text(measurement,
-              style: const TextStyle(color: Colors.grey, fontSize: 14.0)),
+          Text(
+            measurement,
+            style: const TextStyle(color: Colors.grey, fontSize: 13.0),
+          ),
         ],
       ),
     );
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // BUILD
-  // ─────────────────────────────────────────────────────────────────────────
+  // ── LOADING SHIMMER SECTION ───────────────────────────────────────────────
+
+  Widget _buildLoadingSection(String title) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(title,
+            style: const TextStyle(
+                fontSize: 16.0,
+                fontWeight: FontWeight.bold,
+                color: Color(0xFF003D33))),
+        const SizedBox(height: 12.0),
+        Container(
+          height: 16.0,
+          width: double.infinity,
+          decoration: BoxDecoration(
+            color: Colors.grey.withValues(alpha: 0.15),
+            borderRadius: BorderRadius.circular(8.0),
+          ),
+        ),
+        const SizedBox(height: 8.0),
+        Container(
+          height: 16.0,
+          width: 200.0,
+          decoration: BoxDecoration(
+            color: Colors.grey.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(8.0),
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ── BUILD ─────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
     final appState = AppState.of(context);
     final bool isFromSearch = widget.recipe['isFromSearch'] ?? false;
 
-    final int cookTime = _currentRecipe['cookTimeMinutes'] ?? 0;
-    final int prepTime = _currentRecipe['prepTimeMinutes'] ?? 0;
-    final int totalTime = prepTime + cookTime;
-
-    // ✅ Tools from normalized 'tools' field
     final List<String> tools =
     List<String>.from(_currentRecipe['tools'] ?? []);
-
-    // ✅ Instructions from normalized 'instructions' field
-    final List<dynamic> instructions =
-        _currentRecipe['instructions'] as List<dynamic>? ?? [];
-
-    // ✅ Ingredients from normalized 'ingredients' field
     final List<dynamic> ingredients =
         _currentRecipe['ingredients'] as List<dynamic>? ?? [];
+    final List<dynamic> instructions =
+        _currentRecipe['instructions'] as List<dynamic>? ?? [];
+    final int servings = (_currentRecipe['servings'] as int?) ?? 4;
 
     return Scaffold(
       backgroundColor: Colors.white,
       body: SafeArea(
         child: Column(
           children: [
-            // ── App Bar ────────────────────────────────────────────────────
+            // ── App Bar ──────────────────────────────────────────────────
             Padding(
               padding: const EdgeInsets.symmetric(
                   horizontal: 24.0, vertical: 16.0),
@@ -308,13 +302,15 @@ class _RecipeViewState extends State<RecipeView> {
                     child: Text(
                       _currentRecipe['name'] ?? 'Recipe',
                       style: const TextStyle(
-                        fontSize: 24.0,
+                        fontSize: 22.0,
                         fontWeight: FontWeight.bold,
                         color: Color(0xFF003D33),
                       ),
                       overflow: TextOverflow.ellipsis,
+                      maxLines: 1,
                     ),
                   ),
+                  // Loading spinner while fetching Spoonacular details
                   if (_isLoading)
                     const Padding(
                       padding: EdgeInsets.only(right: 12.0),
@@ -326,15 +322,31 @@ class _RecipeViewState extends State<RecipeView> {
                       ),
                     ),
                   if (isFromSearch)
+                  // Save button (search results)
                     GestureDetector(
-                      onTap: () {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Recipe added to Saved Recipes!'),
-                            backgroundColor: Color(0xFF1BAB52),
-                          ),
-                        );
-                        Navigator.pop(context);
+                      onTap: () async {
+                        try {
+                          await RecipeService.saveSearchedRecipe(
+                              _currentRecipe);
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content:
+                                Text('✅ Recipe saved to My Recipes!'),
+                                backgroundColor: Color(0xFF1BAB52),
+                              ),
+                            );
+                            Navigator.pop(context);
+                          }
+                        } catch (e) {
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                  content: Text('❌ Failed to save: $e'),
+                                  backgroundColor: Colors.red),
+                            );
+                          }
+                        }
                       },
                       child: Container(
                         padding: const EdgeInsets.symmetric(
@@ -347,16 +359,18 @@ class _RecipeViewState extends State<RecipeView> {
                           children: [
                             Icon(Icons.bookmark_add_outlined,
                                 size: 18.0, color: Colors.white),
-                            SizedBox(width: 8.0),
+                            SizedBox(width: 6.0),
                             Text('Save',
                                 style: TextStyle(
                                     fontWeight: FontWeight.w600,
-                                    color: Colors.white)),
+                                    color: Colors.white,
+                                    fontSize: 14.0)),
                           ],
                         ),
                       ),
                     )
                   else
+                  // Edit button (saved recipes)
                     GestureDetector(
                       onTap: () async {
                         final result = await context.pushNamed(
@@ -367,9 +381,6 @@ class _RecipeViewState extends State<RecipeView> {
                           setState(() {
                             _currentRecipe = RecipeService.normalize(
                                 Map<String, dynamic>.from(result));
-                            _displayServings =
-                                (_currentRecipe['servings'] as int?) ??
-                                    _displayServings;
                           });
                         }
                       },
@@ -384,16 +395,17 @@ class _RecipeViewState extends State<RecipeView> {
                           children: [
                             Icon(Icons.edit_outlined,
                                 size: 18.0, color: Color(0xFF003D33)),
-                            SizedBox(width: 8.0),
+                            SizedBox(width: 6.0),
                             Text('Edit',
                                 style: TextStyle(
                                     fontWeight: FontWeight.w600,
-                                    color: Color(0xFF003D33))),
+                                    color: Color(0xFF003D33),
+                                    fontSize: 14.0)),
                           ],
                         ),
                       ),
                     ),
-                  const SizedBox(width: 12.0),
+                  const SizedBox(width: 10.0),
                   GestureDetector(
                     onTap: () => Navigator.pop(context),
                     child: Container(
@@ -410,7 +422,7 @@ class _RecipeViewState extends State<RecipeView> {
               ),
             ),
 
-            // ── Scrollable Body ────────────────────────────────────────────
+            // ── Body ─────────────────────────────────────────────────────
             Expanded(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.symmetric(horizontal: 24.0),
@@ -420,9 +432,9 @@ class _RecipeViewState extends State<RecipeView> {
                     // Recipe image
                     if (_currentRecipe['image'] != null)
                       Padding(
-                        padding: const EdgeInsets.only(bottom: 24.0),
+                        padding: const EdgeInsets.only(bottom: 20.0),
                         child: ClipRRect(
-                          borderRadius: BorderRadius.circular(24.0),
+                          borderRadius: BorderRadius.circular(20.0),
                           child: _currentRecipe['image']
                               .toString()
                               .startsWith('http')
@@ -446,21 +458,21 @@ class _RecipeViewState extends State<RecipeView> {
                       )
                     else
                       Padding(
-                        padding: const EdgeInsets.only(bottom: 24.0),
+                        padding: const EdgeInsets.only(bottom: 20.0),
                         child: _buildPlaceholderImage(),
                       ),
 
-                    // ── Info Card ──────────────────────────────────────────
+                    // ── Info card ─────────────────────────────────────────
                     Container(
                       padding: const EdgeInsets.all(20.0),
                       decoration: BoxDecoration(
                         color: Colors.white,
                         borderRadius: BorderRadius.circular(24.0),
-                        border:
-                        Border.all(color: const Color(0xFFEEEEEE)),
+                        border: Border.all(color: const Color(0xFFEEEEEE)),
                       ),
                       child: Column(
                         children: [
+                          // Difficulty + tools count
                           Row(
                             mainAxisAlignment:
                             MainAxisAlignment.spaceBetween,
@@ -470,11 +482,10 @@ class _RecipeViewState extends State<RecipeView> {
                                     horizontal: 12.0, vertical: 6.0),
                                 decoration: BoxDecoration(
                                   color: const Color(0xFFE8F5E9),
-                                  borderRadius:
-                                  BorderRadius.circular(8.0),
+                                  borderRadius: BorderRadius.circular(8.0),
                                 ),
                                 child: Text(
-                                  _currentRecipe['difficulty'] ?? 'Easy',
+                                  _currentRecipe['difficulty'] ?? 'Medium',
                                   style: const TextStyle(
                                     color: Color(0xFF1BAB52),
                                     fontWeight: FontWeight.w600,
@@ -482,40 +493,49 @@ class _RecipeViewState extends State<RecipeView> {
                                   ),
                                 ),
                               ),
-                              // ✅ Shows actual tool count; graceful when empty
+                              // ✅ Tools count — shows correctly after fetch
                               Row(
                                 children: [
-                                  const Icon(
-                                      Icons.restaurant_menu_outlined,
-                                      size: 16.0,
-                                      color: Colors.grey),
+                                  if (_isLoading)
+                                    const SizedBox(
+                                      width: 12,
+                                      height: 12,
+                                      child: CircularProgressIndicator(
+                                          strokeWidth: 1.5,
+                                          color: Colors.grey),
+                                    )
+                                  else
+                                    const Icon(
+                                        Icons.restaurant_menu_outlined,
+                                        size: 16.0,
+                                        color: Colors.grey),
                                   const SizedBox(width: 4.0),
                                   Text(
-                                    tools.isEmpty
+                                    _isLoading
+                                        ? 'Loading...'
+                                        : tools.isEmpty
                                         ? 'No tools listed'
                                         : '${tools.length} tool${tools.length == 1 ? '' : 's'}',
                                     style: const TextStyle(
-                                        color: Colors.grey,
-                                        fontSize: 12.0),
+                                        color: Colors.grey, fontSize: 12.0),
                                   ),
                                 ],
                               ),
                             ],
                           ),
                           const SizedBox(height: 20.0),
+                          // ✅ Stats — read-only (servings not adjustable here)
                           Row(
                             mainAxisAlignment:
                             MainAxisAlignment.spaceAround,
                             children: [
-                              // Time
                               _buildInfoItem(
                                 Icons.access_time,
-                                '${totalTime > 0 ? totalTime : cookTime}m',
+                                _timeDisplay,
                                 'Time',
                                 const Color(0xFFE8F5E9),
                                 const Color(0xFF1BAB52),
                               ),
-                              // ✅ Budget: total for _displayServings, updates automatically
                               _buildInfoItem(
                                 Icons.attach_money,
                                 _budgetDisplay,
@@ -523,43 +543,29 @@ class _RecipeViewState extends State<RecipeView> {
                                 const Color(0xFFFFF3E0),
                                 const Color(0xFFFF9800),
                               ),
-                              // ✅ Servings: interactive adjuster (+/-)
-                              _buildServingsAdjuster(),
-                              // ✅ Total calories: caloriesPerServing × _displayServings
+                              _buildInfoItem(
+                                Icons.people_outline,
+                                '$servings',
+                                'Servings',
+                                const Color(0xFFE8F5E9),
+                                const Color(0xFF1BAB52),
+                              ),
+                              // ✅ Calories — shows correctly after Spoonacular fetch
                               _buildInfoItem(
                                 Icons.local_fire_department_outlined,
-                                _caloriesPerServing > 0
-                                    ? '$_totalCalories'
-                                    : 'N/A',
+                                _isLoading ? '...' : _caloriesDisplay,
                                 'Calories',
                                 const Color(0xFFFFEBEE),
                                 const Color(0xFFEF5350),
                               ),
                             ],
                           ),
-                          // ✅ Hint shown only if calories and budget can scale
-                          if (_caloriesPerServing > 0 ||
-                              (_currentRecipe['budgetPerServing'] as num?)
-                                  ?.toDouble() !=
-                                  null)
-                            Padding(
-                              padding: const EdgeInsets.only(top: 12.0),
-                              child: Text(
-                                'Tap − + to adjust servings · budget & calories update automatically',
-                                textAlign: TextAlign.center,
-                                style: TextStyle(
-                                  fontSize: 11.0,
-                                  color: Colors.grey.withValues(alpha: 0.7),
-                                  fontStyle: FontStyle.italic,
-                                ),
-                              ),
-                            ),
                         ],
                       ),
                     ),
-                    const SizedBox(height: 32.0),
+                    const SizedBox(height: 28.0),
 
-                    // ── Tools Required ─────────────────────────────────────
+                    // ── Tools Required ────────────────────────────────────
                     const Row(
                       children: [
                         Icon(Icons.handyman_outlined,
@@ -575,67 +581,92 @@ class _RecipeViewState extends State<RecipeView> {
                         ),
                       ],
                     ),
-                    const SizedBox(height: 16.0),
-                    // ✅ Shows actual tool list (detected from instructions)
-                    if (tools.isNotEmpty)
-                      Wrap(
-                        spacing: 12.0,
-                        runSpacing: 12.0,
-                        children:
-                        tools.map((t) => _buildToolChip(t)).toList(),
-                      )
-                    else
+                    const SizedBox(height: 14.0),
+                    // ✅ Tools list — filled after fetchSpoonacularDetails
+                    if (_isLoading)
+                      _buildLoadingSection('')
+                    else if (tools.isEmpty)
                       const Text(
                         'No tools listed',
                         style: TextStyle(
                             color: Colors.grey,
                             fontSize: 14.0,
                             fontStyle: FontStyle.italic),
+                      )
+                    else
+                      Wrap(
+                        spacing: 10.0,
+                        runSpacing: 10.0,
+                        children:
+                        tools.map((t) => _buildToolChip(t)).toList(),
                       ),
-                    const SizedBox(height: 32.0),
+                    const SizedBox(height: 28.0),
 
-                    // ── Ingredients ────────────────────────────────────────
+                    // ── Ingredients ───────────────────────────────────────
                     Container(
+                      width: double.infinity,
                       padding: const EdgeInsets.all(20.0),
                       decoration: BoxDecoration(
-                        color: const Color(0xFFF1F8E9)
-                            .withValues(alpha: 0.5),
+                        color:
+                        const Color(0xFFF1F8E9).withValues(alpha: 0.5),
                         borderRadius: BorderRadius.circular(24.0),
                       ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text(
-                            'Ingredients',
-                            style: TextStyle(
-                              fontSize: 18.0,
-                              fontWeight: FontWeight.bold,
-                              color: Color(0xFF003D33),
-                            ),
+                          Row(
+                            children: [
+                              const Text(
+                                'Ingredients',
+                                style: TextStyle(
+                                  fontSize: 18.0,
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFF003D33),
+                                ),
+                              ),
+                              const Spacer(),
+                              Text(
+                                '$servings serving${servings == 1 ? '' : 's'}',
+                                style: const TextStyle(
+                                    color: Color(0xFF1BAB52),
+                                    fontSize: 12.0,
+                                    fontWeight: FontWeight.w500),
+                              ),
+                            ],
                           ),
                           const SizedBox(height: 16.0),
-                          ...ingredients.map((ing) {
-                            if (ing is Map) {
-                              final name = ing['name']?.toString() ?? '';
-                              final amount = ing['amount']?.toString() ?? '';
-                              final unit = ing['unit']?.toString() ?? '';
+                          if (ingredients.isEmpty && _isLoading)
+                            _buildLoadingSection('')
+                          else if (ingredients.isEmpty)
+                            const Text('No ingredients listed.',
+                                style: TextStyle(
+                                    color: Colors.grey,
+                                    fontStyle: FontStyle.italic))
+                          else
+                            ...ingredients.map((ing) {
+                              if (ing is Map) {
+                                final name = ing['name']?.toString() ?? '';
+                                final amount =
+                                    ing['amount']?.toString() ?? '';
+                                final unit = ing['unit']?.toString() ?? '';
+                                return _buildIngredientItem(
+                                    name, '$amount $unit'.trim());
+                              }
                               return _buildIngredientItem(
-                                  name, '$amount $unit'.trim());
-                            }
-                            return _buildIngredientItem(
-                                ing.toString(), '');
-                          }),
+                                  ing.toString(), '');
+                            }),
                         ],
                       ),
                     ),
-                    const SizedBox(height: 24.0),
+                    const SizedBox(height: 20.0),
 
-                    // ── Cooking Steps ──────────────────────────────────────
+                    // ── Cooking Steps ─────────────────────────────────────
                     Container(
+                      width: double.infinity,
                       padding: const EdgeInsets.all(20.0),
                       decoration: BoxDecoration(
-                        color: const Color(0xFFF1F8E9)
-                            .withValues(alpha: 0.5),
+                        color:
+                        const Color(0xFFF1F8E9).withValues(alpha: 0.5),
                         borderRadius: BorderRadius.circular(24.0),
                       ),
                       child: Column(
@@ -650,13 +681,16 @@ class _RecipeViewState extends State<RecipeView> {
                             ),
                           ),
                           const SizedBox(height: 16.0),
-                          // ✅ Each step is a separate item, not one big paragraph
-                          if (instructions.isEmpty)
+                          // ✅ Steps — filled after fetchSpoonacularDetails
+                          if (_isLoading)
+                            _buildLoadingSection('')
+                          else if (instructions.isEmpty)
                             const Text(
-                              'No steps available.',
+                              'No steps available.\nTap "Edit" to add cooking steps.',
                               style: TextStyle(
                                   color: Colors.grey,
-                                  fontStyle: FontStyle.italic),
+                                  fontStyle: FontStyle.italic,
+                                  height: 1.5),
                             )
                           else
                             ...instructions.asMap().entries.map(
