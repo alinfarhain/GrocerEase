@@ -457,21 +457,32 @@ class _RecipeEditState extends State<RecipeEdit> {
     final double ratio = newServings / _servings;
 
     setState(() {
+      // Scale ingredient quantities
       for (int i = 0; i < _ingredientAmountControllers.length; i++) {
         final controller = _ingredientAmountControllers[i];
         final unit = _ingredientUnitControllers[i].text.toLowerCase().trim();
-
         final double? currentAmount = _parseAmount(controller.text);
         if (currentAmount != null) {
           final double newAmount = currentAmount * ratio;
           final bool preferFraction =
           !['g', 'kg', 'ml', 'l', 'mg'].contains(unit);
-          controller.text = _formatAmount(
-            newAmount,
-            preferFraction: preferFraction,
-          );
+          controller.text =
+              _formatAmount(newAmount, preferFraction: preferFraction);
         }
       }
+
+      // ✅ NEW: Scale total budget proportionally
+      // e.g. RM15 for 4 servings → RM30 for 8 servings
+      final currentBudget = double.tryParse(_budgetController.text) ?? 0;
+      if (currentBudget > 0) {
+        final newBudget = currentBudget * ratio;
+        _budgetController.text = newBudget
+            .toStringAsFixed(2)
+            .replaceAll(RegExp(r'\.?0+$'), '');
+      }
+
+      // Calories = "per serving" → stays fixed when servings change ✅
+
       _servings = newServings;
     });
   }
