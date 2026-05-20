@@ -26,10 +26,11 @@ class _RecipeViewState extends State<RecipeView> {
 
     final id = _currentRecipe['id'];
     final isFromSearch = widget.recipe['isFromSearch'] == true;
+    // ✅ Recipes from bulk search already have full data — skip extra API call
+    final isFullyLoaded = widget.recipe['isFullyLoaded'] == true;
 
-    if (isFromSearch && id != null && id is String && !id.contains('-')) {
-      // ✅ Spoonacular numeric ID → fetch FULL details (steps, tools, calories)
-      // The complexSearch only gave us basic info; this call gets everything.
+    if (isFromSearch && !isFullyLoaded && id != null && id is String && !id.contains('-')) {
+      // Only fetch if the recipe came from basic search (not from bulk fetch)
       _fetchSpoonacularDetails(id);
     } else if (id != null && id is String && id.contains('-')) {
       // Supabase UUID → refresh saved recipe

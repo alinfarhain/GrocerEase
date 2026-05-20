@@ -131,6 +131,8 @@ class RecipeService {
       List<String>.from((meal['dishTypes'] as List? ?? []).take(2)),
       'budget': budgetRM > 0 ? budgetRM.toStringAsFixed(2) : '0',
       'isFromSearch': true,
+      // ✅ Tells RecipeView to skip an extra API call — data is already complete
+      'isFullyLoaded': true,
     };
   }
 

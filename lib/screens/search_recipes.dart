@@ -40,6 +40,14 @@ class _SearchRecipesState extends State<SearchRecipes> {
   }
 
   // ── API CALL ──────────────────────────────────────────────────────────────
+  // WHY 2 STEPS:
+  // complexSearch does NOT reliably return equipment (tools) inside
+  // analyzedInstructions steps, even with addRecipeInformation=true.
+  // Equipment data only comes from the individual/bulk detail endpoint.
+  // So we:
+  //   Step 1 → complexSearch           → get recipe IDs (1 API point)
+  //   Step 2 → informationBulk?ids=... → get FULL details for all (1 pt each)
+  // Total: ~11 points per search (10 results). Free plan = ~13 searches/day.
 
   Future<void> _searchRecipes() async {
     final query = _searchController.text.trim();
@@ -55,42 +63,91 @@ class _SearchRecipesState extends State<SearchRecipes> {
     });
 
     try {
-      final uri = Uri.parse(
+      // ── Step 1: Search for recipe IDs ──────────────────────────────────
+      final searchUri = Uri.parse(
         'https://api.spoonacular.com/recipes/complexSearch'
             '?query=${Uri.encodeComponent(query)}'
             '&apiKey=${RecipeService.spoonacularApiKey}'
-            '&number=15'
-            '&addRecipeInformation=true'
-            '&fillIngredients=true'
-            '&addNutritionInformation=true', // ✅ returns calories in search results
+            '&number=10', // 10 results → 11 API points total (affordable on free plan)
       );
 
-      final response = await http.get(uri).timeout(const Duration(seconds: 15));
+      final searchResponse = await http
+          .get(searchUri)
+          .timeout(const Duration(seconds: 15));
 
       if (!mounted) return;
 
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        final results = data['results'] as List? ?? [];
-        setState(() {
-          _searchResults = results
-              .map((meal) => _mapSpoonacularRecipe(meal as Map<String, dynamic>))
-              .toList();
-          _isSearching = false;
-        });
-      } else if (response.statusCode == 401) {
+      if (searchResponse.statusCode == 401) {
         setState(() {
           _searchError = 'Invalid API key. Please check your Spoonacular API key.';
           _isSearching = false;
         });
-      } else if (response.statusCode == 402) {
+        return;
+      }
+      if (searchResponse.statusCode == 402) {
         setState(() {
-          _searchError = 'Daily limit reached (150/day free). Try again tomorrow.';
+          _searchError = 'Daily limit reached (150 points/day free). Try again tomorrow.';
+          _isSearching = false;
+        });
+        return;
+      }
+      if (searchResponse.statusCode != 200) {
+        setState(() {
+          _searchError = 'Search failed (${searchResponse.statusCode}). Try again.';
+          _isSearching = false;
+        });
+        return;
+      }
+
+      final searchData = json.decode(searchResponse.body);
+      final basicResults = searchData['results'] as List? ?? [];
+
+      if (basicResults.isEmpty) {
+        setState(() {
+          _searchResults = [];
+          _isSearching = false;
+        });
+        return;
+      }
+
+      // ── Step 2: Bulk fetch FULL details (tools, calories, steps) ───────
+      // This endpoint reliably returns analyzedInstructions with equipment
+      // AND nutrition data — which complexSearch does NOT.
+      final ids = basicResults
+          .map((r) => (r as Map<String, dynamic>)['id'].toString())
+          .join(',');
+
+      final bulkUri = Uri.parse(
+        'https://api.spoonacular.com/recipes/informationBulk'
+            '?ids=$ids'
+            '&apiKey=${RecipeService.spoonacularApiKey}'
+            '&includeNutrition=true',
+      );
+
+      final bulkResponse = await http
+          .get(bulkUri)
+          .timeout(const Duration(seconds: 15));
+
+      if (!mounted) return;
+
+      if (bulkResponse.statusCode == 200) {
+        final fullDetails = json.decode(bulkResponse.body) as List? ?? [];
+        setState(() {
+          _searchResults = fullDetails
+              .map((meal) => RecipeService.mapFullSpoonacularRecipe(
+            meal as Map<String, dynamic>,
+          ))
+              .toList();
           _isSearching = false;
         });
       } else {
+        // Fallback: show basic results without tools/calories
         setState(() {
-          _searchError = 'Search failed (${response.statusCode}). Try again.';
+          _searchResults = basicResults
+              .map((meal) => RecipeService.mapSpoonacularSearchResult(
+            meal as Map<String, dynamic>,
+          ))
+              .toList();
           _isSearching = false;
         });
       }
@@ -103,11 +160,7 @@ class _SearchRecipesState extends State<SearchRecipes> {
     }
   }
 
-  // ── SPOONACULAR → LOCAL MAP ───────────────────────────────────────────────
-  // Delegates ALL mapping/conversion logic to RecipeService.
-  // This keeps search_recipes.dart clean and avoids duplicated code.
-  // RecipeView automatically calls RecipeService.fetchSpoonacularRecipe(id)
-  // to get full details (steps, tools, calories) when a recipe is opened.
+  // ── MAP DELEGATE ──────────────────────────────────────────────────────────
 
   Map<String, dynamic> _mapSpoonacularRecipe(Map<String, dynamic> meal) {
     return RecipeService.mapSpoonacularSearchResult(meal);
