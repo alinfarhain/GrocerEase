@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../globals/app_state.dart';
 import 'package:go_router/go_router.dart';
 import 'dart:io';
+import '../services/recipe_service.dart'; // ✅ NEW
 
 class RecipeView extends StatefulWidget {
   const RecipeView({required this.recipe, super.key});
@@ -16,11 +17,39 @@ class RecipeView extends StatefulWidget {
 
 class _RecipeViewState extends State<RecipeView> {
   late Map<String, dynamic> _currentRecipe;
+  bool _isLoading = false; // ✅ NEW
 
   @override
   void initState() {
     super.initState();
-    _currentRecipe = Map<String, dynamic>.from(widget.recipe);
+    // ✅ NEW: Normalize field names so this view works whether the data
+    // comes from Supabase (recipe_name, cooking_steps, etc.) or
+    // from local hardcoded maps (name, instructions, etc.)
+    _currentRecipe = RecipeService.normalize(
+      Map<String, dynamic>.from(widget.recipe),
+    );
+
+    // ✅ NEW: If the recipe has a Supabase UUID id, fetch fresh data
+    // This ensures the view always shows the latest saved version
+    final id = _currentRecipe['id'];
+    if (id != null && id is String && id.contains('-')) {
+      _refreshFromSupabase(id);
+    }
+  }
+
+  // ✅ NEW: Fetches the latest version of the recipe from Supabase
+  Future<void> _refreshFromSupabase(String id) async {
+    setState(() => _isLoading = true);
+    try {
+      final fresh = await RecipeService.getRecipeById(id);
+      if (fresh != null && mounted) {
+        setState(() => _currentRecipe = fresh);
+      }
+    } catch (_) {
+      // Fall back to the passed-in data — no error shown to user
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 
   Widget _buildInfoItem(
@@ -87,7 +116,7 @@ class _RecipeViewState extends State<RecipeView> {
             ),
             alignment: Alignment.center,
             child: Text(
-              '${number}',
+              '$number',
               style: const TextStyle(
                 color: Colors.white,
                 fontWeight: FontWeight.bold,
@@ -159,20 +188,26 @@ class _RecipeViewState extends State<RecipeView> {
     final int prepTime = _currentRecipe['prepTimeMinutes'] ?? 0;
     final int cookTime = _currentRecipe['cookTimeMinutes'] ?? 0;
     final int totalTime = prepTime + cookTime;
+
+    // ✅ UPDATED: Reads budget from Supabase 'budget' field or legacy 'price' field
     String budget = '15';
     if (_currentRecipe['price'] != null) {
       budget = _currentRecipe['price'].toString().replaceAll('RM', '');
     } else if (_currentRecipe['budget'] != null) {
       budget = _currentRecipe['budget'].toString();
     }
+
+    // ✅ UPDATED: Reads from 'tools' (normalized from Supabase 'tools_required')
     final List<String> tools = List<String>.from(
       _currentRecipe['tools'] ?? ['Pan', 'Knife', 'Spoon'],
     );
+
     return Scaffold(
       backgroundColor: Colors.white,
       body: SafeArea(
         child: Column(
           children: [
+            // ── App Bar ──────────────────────────────────────────
             Padding(
               padding: const EdgeInsets.symmetric(
                 horizontal: 24.0,
@@ -191,6 +226,19 @@ class _RecipeViewState extends State<RecipeView> {
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
+                  // ✅ Loading indicator while refreshing from Supabase
+                  if (_isLoading)
+                    const Padding(
+                      padding: EdgeInsets.only(right: 12.0),
+                      child: SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Color(0xFF1BAB52),
+                        ),
+                      ),
+                    ),
                   if (isFromSearch)
                     GestureDetector(
                       onTap: () {
@@ -212,7 +260,7 @@ class _RecipeViewState extends State<RecipeView> {
                           borderRadius: BorderRadius.circular(12.0),
                         ),
                         child: const Row(
-                          children: const [
+                          children: [
                             Icon(
                               Icons.bookmark_add_outlined,
                               size: 18.0,
@@ -233,13 +281,18 @@ class _RecipeViewState extends State<RecipeView> {
                   else
                     GestureDetector(
                       onTap: () async {
+                        // ✅ Pass the normalized recipe to RecipeEdit
                         final result = await context.pushNamed(
                           'recipe-edit',
                           extra: _currentRecipe,
                         );
                         if (result != null && result is Map<String, dynamic>) {
                           setState(() {
-                            _currentRecipe = result;
+                            // Normalize result in case RecipeEdit returns
+                            // Supabase-style fields
+                            _currentRecipe = RecipeService.normalize(
+                              Map<String, dynamic>.from(result),
+                            );
                           });
                         }
                       },
@@ -253,7 +306,7 @@ class _RecipeViewState extends State<RecipeView> {
                           borderRadius: BorderRadius.circular(12.0),
                         ),
                         child: const Row(
-                          children: const [
+                          children: [
                             Icon(
                               Icons.edit_outlined,
                               size: 18.0,
@@ -290,24 +343,30 @@ class _RecipeViewState extends State<RecipeView> {
                 ],
               ),
             ),
+
+            // ── Body ─────────────────────────────────────────────
             Expanded(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.symmetric(horizontal: 24.0),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    // Recipe image
                     if (_currentRecipe['image'] != null)
                       Padding(
                         padding: const EdgeInsets.only(bottom: 24.0),
                         child: ClipRRect(
                           borderRadius: BorderRadius.circular(24.0),
-                          child: _currentRecipe['image'].startsWith('http')
+                          child: _currentRecipe['image']
+                              .toString()
+                              .startsWith('http')
                               ? Image.network(
                             _currentRecipe['image'],
                             height: 200.0,
                             width: double.infinity,
                             fit: BoxFit.cover,
-                            errorBuilder: (context, error, stackTrace) =>
+                            errorBuilder:
+                                (context, error, stackTrace) =>
                                 _buildPlaceholderImage(),
                           )
                               : Image.file(
@@ -315,11 +374,19 @@ class _RecipeViewState extends State<RecipeView> {
                             height: 200.0,
                             width: double.infinity,
                             fit: BoxFit.cover,
-                            errorBuilder: (context, error, stackTrace) =>
+                            errorBuilder:
+                                (context, error, stackTrace) =>
                                 _buildPlaceholderImage(),
                           ),
                         ),
+                      )
+                    else
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 24.0),
+                        child: _buildPlaceholderImage(),
                       ),
+
+                    // Info card
                     Container(
                       padding: const EdgeInsets.all(20.0),
                       decoration: BoxDecoration(
@@ -342,6 +409,7 @@ class _RecipeViewState extends State<RecipeView> {
                                   borderRadius: BorderRadius.circular(8.0),
                                 ),
                                 child: Text(
+                                  // ✅ Reads from normalized 'difficulty' field
                                   _currentRecipe['difficulty'] ?? 'Easy',
                                   style: const TextStyle(
                                     color: Color(0xFF1BAB52),
@@ -382,7 +450,7 @@ class _RecipeViewState extends State<RecipeView> {
                               ),
                               _buildInfoItem(
                                 Icons.attach_money,
-                                'RM${budget}',
+                                'RM$budget',
                                 'Budget',
                                 const Color(0xFFFFF3E0),
                                 const Color(0xFFFF9800),
@@ -396,6 +464,7 @@ class _RecipeViewState extends State<RecipeView> {
                               ),
                               _buildInfoItem(
                                 Icons.local_fire_department_outlined,
+                                // ✅ Reads from normalized 'caloriesPerServing'
                                 '${_currentRecipe['caloriesPerServing'] ?? _currentRecipe['calories'] ?? 450}',
                                 'Calories',
                                 const Color(0xFFFFEBEE),
@@ -407,8 +476,10 @@ class _RecipeViewState extends State<RecipeView> {
                       ),
                     ),
                     const SizedBox(height: 32.0),
+
+                    // Tools
                     const Row(
-                      children: const [
+                      children: [
                         Icon(
                           Icons.handyman_outlined,
                           color: Color(0xFF1BAB52),
@@ -444,6 +515,8 @@ class _RecipeViewState extends State<RecipeView> {
                         ),
                       ),
                     const SizedBox(height: 32.0),
+
+                    // Ingredients
                     Container(
                       padding: const EdgeInsets.all(20.0),
                       decoration: BoxDecoration(
@@ -462,24 +535,32 @@ class _RecipeViewState extends State<RecipeView> {
                             ),
                           ),
                           const SizedBox(height: 16.0),
-                          ...(_currentRecipe['ingredients'] as List<dynamic>? ??
+                          // ✅ Reads from normalized 'ingredients' field
+                          ...(_currentRecipe['ingredients']
+                          as List<dynamic>? ??
                               [])
                               .map((ing) {
                             if (ing is Map) {
-                              final String name = ing['name']?.toString() ?? '';
-                              final String amount = ing['amount']?.toString() ?? '';
-                              final String unit = ing['unit']?.toString() ?? '';
+                              final String name =
+                                  ing['name']?.toString() ?? '';
+                              final String amount =
+                                  ing['amount']?.toString() ?? '';
+                              final String unit =
+                                  ing['unit']?.toString() ?? '';
                               return _buildIngredientItem(
                                 name,
                                 '$amount $unit'.trim(),
                               );
                             }
-                            return _buildIngredientItem(ing.toString(), '');
+                            return _buildIngredientItem(
+                                ing.toString(), '');
                           }),
                         ],
                       ),
                     ),
                     const SizedBox(height: 24.0),
+
+                    // Cooking Steps
                     Container(
                       padding: const EdgeInsets.all(20.0),
                       decoration: BoxDecoration(
@@ -498,6 +579,8 @@ class _RecipeViewState extends State<RecipeView> {
                             ),
                           ),
                           const SizedBox(height: 16.0),
+                          // ✅ Reads from normalized 'instructions' field
+                          // (mapped from Supabase 'cooking_steps')
                           ...(_currentRecipe['instructions']
                           as List<dynamic>? ??
                               [])

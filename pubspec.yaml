@@ -11,7 +11,7 @@ dependencies:
   flutter:
     sdk: flutter
   go_router: ^14.0.0
-  supabase_flutter: ^2.6.0
+  supabase_flutter: ^2.12.4
   provider: ^6.1.2
   shared_preferences: ^2.3.2
   cupertino_icons: ^1.0.8

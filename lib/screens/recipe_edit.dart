@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'dart:io';
 import 'package:image_picker/image_picker.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../globals/app_state.dart';
 
 class RecipeEdit extends StatefulWidget {
@@ -22,6 +23,7 @@ class _RecipeEditState extends State<RecipeEdit> {
   late int _servings;
   late String _difficulty;
   String? _imagePath;
+  bool _isSaving = false; // ✅ NEW
 
   final List<String> _selectedTools = [];
   final List<TextEditingController> _ingredientNameControllers = [];
@@ -114,11 +116,95 @@ class _RecipeEditState extends State<RecipeEdit> {
   Future<void> _pickImage() async {
     final ImagePicker picker = ImagePicker();
     final XFile? image = await picker.pickImage(source: ImageSource.gallery);
-    
+
     if (image != null) {
       setState(() {
         _imagePath = image.path;
       });
+    }
+  }
+
+  // ✅ NEW: Save to Supabase
+  Future<void> _saveToSupabase() async {
+    // Basic validation
+    if (_nameController.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please enter a recipe name')),
+      );
+      return;
+    }
+
+    setState(() => _isSaving = true);
+
+    try {
+      final supabase = Supabase.instance.client;
+      final userId = supabase.auth.currentUser?.id;
+
+      // Build ingredients list
+      final ingredients = List.generate(
+        _ingredientNameControllers.length,
+            (index) => {
+          'name': _ingredientNameControllers[index].text,
+          'amount': _ingredientAmountControllers[index].text,
+          'unit': _ingredientUnitControllers[index].text,
+        },
+      );
+
+      // Build cooking steps list
+      final cookingSteps = _stepControllers
+          .map((c) => c.text.trim())
+          .where((s) => s.isNotEmpty)
+          .toList();
+
+      // Map your field names → Supabase column names
+      final recipeData = {
+        'user_id': userId,
+        'recipe_name': _nameController.text.trim(),
+        'image_url': _imagePath,
+        'cooking_duration': int.tryParse(_durationController.text) ?? 0,
+        'estimated_budget': double.tryParse(_budgetController.text) ?? 0.0,
+        'servings': _servings,
+        'calories_per_serving': int.tryParse(_caloriesController.text) ?? 0,
+        'difficulty_level': _difficulty,
+        'tools_required': _selectedTools,
+        'ingredients': ingredients,
+        'cooking_steps': cookingSteps,
+      };
+
+      // Check if editing existing or creating new
+      final existingId = widget.recipe['id'];
+
+      if (existingId != null) {
+        // UPDATE existing recipe
+        await supabase
+            .from('recipes')
+            .update(recipeData)
+            .eq('id', existingId);
+      } else {
+        // INSERT new recipe
+        await supabase.from('recipes').insert(recipeData);
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('✅ Recipe saved successfully!'),
+            backgroundColor: Color(0xFF1BAB52),
+          ),
+        );
+        Navigator.pop(context, recipeData);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('❌ Failed to save: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
     }
   }
 
@@ -142,11 +228,11 @@ class _RecipeEditState extends State<RecipeEdit> {
               ),
               child: _imagePath != null
                   ? ClipRRect(
-                      borderRadius: BorderRadius.circular(12.0),
-                      child: _imagePath!.startsWith('http')
-                          ? Image.network(_imagePath!, fit: BoxFit.cover)
-                          : Image.file(File(_imagePath!), fit: BoxFit.cover),
-                    )
+                borderRadius: BorderRadius.circular(12.0),
+                child: _imagePath!.startsWith('http')
+                    ? Image.network(_imagePath!, fit: BoxFit.cover)
+                    : Image.file(File(_imagePath!), fit: BoxFit.cover),
+              )
                   : const Icon(Icons.image_outlined, color: Colors.grey),
             ),
             const SizedBox(width: 16.0),
@@ -280,7 +366,6 @@ class _RecipeEditState extends State<RecipeEdit> {
     text = text.trim();
     if (text.isEmpty) return null;
 
-    // Handle "1 1/2" format
     if (text.contains(' ')) {
       final parts = text.split(' ');
       if (parts.length == 2) {
@@ -292,11 +377,9 @@ class _RecipeEditState extends State<RecipeEdit> {
       }
     }
 
-    // Handle "1/2" format
     final fraction = _parseFraction(text);
     if (fraction != null) return fraction;
 
-    // Handle "1.5" format
     return double.tryParse(text);
   }
 
@@ -320,7 +403,6 @@ class _RecipeEditState extends State<RecipeEdit> {
     final int whole = amount.floor();
     final double fraction = amount - whole;
 
-    // Check for common fractions
     String fractionStr = '';
     const epsilon = 0.01;
 
@@ -349,7 +431,6 @@ class _RecipeEditState extends State<RecipeEdit> {
     }
 
     if (preferFraction) {
-      // If not a common fraction but we prefer fractions, we can try to round to nearest 8th
       final eighths = (fraction * 8).round();
       if (eighths > 0 && eighths < 8) {
         final List<String> eighthStrs = [
@@ -367,7 +448,6 @@ class _RecipeEditState extends State<RecipeEdit> {
       }
     }
 
-    // Fallback to decimal
     return amount.toStringAsFixed(2).replaceAll(RegExp(r'\.?0+$'), '');
   }
 
@@ -384,11 +464,8 @@ class _RecipeEditState extends State<RecipeEdit> {
         final double? currentAmount = _parseAmount(controller.text);
         if (currentAmount != null) {
           final double newAmount = currentAmount * ratio;
-
-          // Prefer fractions for non-metric units
           final bool preferFraction =
-              !['g', 'kg', 'ml', 'l', 'mg'].contains(unit);
-
+          !['g', 'kg', 'ml', 'l', 'mg'].contains(unit);
           controller.text = _formatAmount(
             newAmount,
             preferFraction: preferFraction,
@@ -795,7 +872,7 @@ class _RecipeEditState extends State<RecipeEdit> {
 
   Widget _buildIngredientRow(int index) {
     const ingredientPadding =
-        EdgeInsets.symmetric(horizontal: 12.0, vertical: 16.0);
+    EdgeInsets.symmetric(horizontal: 12.0, vertical: 16.0);
     return Padding(
       padding: const EdgeInsets.only(bottom: 12.0),
       child: Row(
@@ -827,7 +904,7 @@ class _RecipeEditState extends State<RecipeEdit> {
                   itemBuilder: (context) => _commonUnits
                       .map(
                         (unit) => PopupMenuItem(value: unit, child: Text(unit)),
-                      )
+                  )
                       .toList(),
                 ),
               ],
@@ -956,7 +1033,7 @@ class _RecipeEditState extends State<RecipeEdit> {
             const SizedBox(height: 16.0),
             ...List.generate(
               _ingredientNameControllers.length,
-              (index) => _buildIngredientRow(index),
+                  (index) => _buildIngredientRow(index),
             ),
             const SizedBox(height: 32.0),
             Row(
@@ -990,7 +1067,7 @@ class _RecipeEditState extends State<RecipeEdit> {
             const SizedBox(height: 16.0),
             ...List.generate(
               _stepControllers.length,
-              (index) => _buildStepRow(index),
+                  (index) => _buildStepRow(index),
             ),
             const SizedBox(height: 32.0),
             _buildWarningBox(),
@@ -999,33 +1076,8 @@ class _RecipeEditState extends State<RecipeEdit> {
               width: double.infinity,
               height: 56.0,
               child: ElevatedButton(
-                onPressed: () {
-                  final updatedRecipe = Map<String, dynamic>.from(
-                    widget.recipe,
-                  );
-                  updatedRecipe['name'] = _nameController.text;
-                  updatedRecipe['cookTimeMinutes'] =
-                      int.tryParse(_durationController.text) ?? 0;
-                  updatedRecipe['prepTimeMinutes'] = 0;
-                  updatedRecipe['budget'] = _budgetController.text;
-                  updatedRecipe['tools'] = _selectedTools;
-                  updatedRecipe['servings'] = _servings;
-                  updatedRecipe['caloriesPerServing'] =
-                      int.tryParse(_caloriesController.text) ?? 0;
-                  updatedRecipe['difficulty'] = _difficulty;
-                  updatedRecipe['image'] = _imagePath;
-                  updatedRecipe['ingredients'] = List.generate(
-                    _ingredientNameControllers.length,
-                    (index) => {
-                      'name': _ingredientNameControllers[index].text,
-                      'amount': _ingredientAmountControllers[index].text,
-                      'unit': _ingredientUnitControllers[index].text,
-                    },
-                  );
-                  updatedRecipe['instructions'] =
-                      _stepControllers.map((c) => c.text).toList();
-                  Navigator.pop(context, updatedRecipe);
-                },
+                // ✅ NEW: calls _saveToSupabase, disables while saving
+                onPressed: _isSaving ? null : _saveToSupabase,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF1BAB52),
                   shape: RoundedRectangleBorder(
@@ -1033,7 +1085,10 @@ class _RecipeEditState extends State<RecipeEdit> {
                   ),
                   elevation: 0.0,
                 ),
-                child: const Text(
+                // ✅ NEW: shows spinner while saving
+                child: _isSaving
+                    ? const CircularProgressIndicator(color: Colors.white)
+                    : const Text(
                   'Save Recipe',
                   style: TextStyle(
                     color: Colors.white,
