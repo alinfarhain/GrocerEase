@@ -942,15 +942,29 @@ class _MyRecipesState extends State<MyRecipes> {
 
   // Toggles favourite locally (no Supabase column yet — add is_favourite
   // column to your recipes table to persist this)
-  void _toggleFavourite(Map<String, dynamic> recipe) {
-    setState(() {
-      final index = _recipes
-          .indexWhere((r) => r['id'] == recipe['id']);
-      if (index != -1) {
-        _recipes[index]['isFavourite'] =
-        !(_recipes[index]['isFavourite'] ?? false);
+  Future<void> _toggleFavourite(Map<String, dynamic> recipe) async {
+    final id = recipe['id'];
+    if (id == null) return;
+
+    final index = _recipes.indexWhere((r) => r['id'] == id);
+    if (index == -1) return;
+
+    final newValue = !(_recipes[index]['isFavourite'] ?? false);
+
+    // Optimistic update
+    setState(() => _recipes[index]['isFavourite'] = newValue);
+
+    try {
+      await RecipeService.toggleFavourite(id, newValue);
+    } catch (e) {
+      // Revert on failure
+      if (mounted) {
+        setState(() => _recipes[index]['isFavourite'] = !newValue);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Failed to update favourite. Please try again.')),
+        );
       }
-    });
+    }
   }
 
   Future<void> _addToPlan(Map<String, dynamic> recipe) async {
@@ -1023,9 +1037,8 @@ class _MyRecipesState extends State<MyRecipes> {
           Expanded(
             child: GestureDetector(
               onTap: () async {
-                // ✅ AWAIT the navigation — when the user comes back from
-                // Search Recipes (whether they saved something or not),
-                // reload recipes from Supabase immediately.
+                // Reset edit mode when leaving to Search Recipes
+                if (_isEditMode) setState(() => _isEditMode = false);
                 await context.pushNamed('search-recipes');
                 if (mounted) _loadRecipes();
               },

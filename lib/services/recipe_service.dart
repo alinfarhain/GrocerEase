@@ -219,7 +219,7 @@ class RecipeService {
       'tools': _toStringList(row['tools_required']),
       'ingredients': _toIngredientList(row['ingredients']),
       'instructions': _toStringList(row['cooking_steps']),
-      'isFavourite': false,
+      'isFavourite': row['is_favourite'] ?? false,
       'mealType': [],
     };
   }
@@ -466,4 +466,12 @@ class RecipeService {
     }
     return [];
   }
+
+  static Future<void> toggleFavourite(String id, bool isFavourite) async {
+    await _supabase
+        .from('recipes')
+        .update({'is_favourite': isFavourite})
+        .eq('id', id);
+  }
+
 }
