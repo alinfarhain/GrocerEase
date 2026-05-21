@@ -4,6 +4,7 @@ import '../models/grocery_item.dart';
 import '../widgets/grocery_item_tile.dart';
 import '../widgets/progress_card.dart';
 import '../widgets/add_item_sheet.dart';
+import '../services/grocery_service.dart';
 
 class GroceryListScreen extends StatefulWidget {
   final AppCurrency currency;
@@ -20,132 +21,69 @@ class GroceryListScreen extends StatefulWidget {
   State<GroceryListScreen> createState() => _GroceryListScreenState();
 }
 
-class _GroceryListScreenState extends State<GroceryListScreen> {
+class _GroceryListScreenState extends State<GroceryListScreen>
+    with RouteAware {
   bool _showByRecipe = false;
   bool _isEditMode = false;
-  final double _budget = 115.00;
+  bool _isLoading = true;
 
-  // ── Sample data ──────────────────────────────────────────────────────
-  final List<GroceryCategory> _categories = [
-    GroceryCategory(
-      name: 'Produce',
-      items: [
-        GroceryItem(
-          id: '1',
-          name: 'Tomatoes',
-          quantity: '4 pcs',
-          quantityAmount: 4,
-          unit: 'pcs',
-          price: 3.50,
-          category: 'Produce',
-          recipe: 'Pasta Arrabbiata',
-          dietaryTags: ['Vegan', 'Halal'],
-        ),
-        GroceryItem(
-          id: '2',
-          name: 'Bell Peppers',
-          quantity: '2 pcs',
-          quantityAmount: 2,
-          unit: 'pcs',
-          price: 4.00,
-          category: 'Produce',
-          recipe: 'Chicken Stir Fry',
-          dietaryTags: ['Vegan', 'Halal'],
-        ),
-        GroceryItem(
-          id: '3',
-          name: 'Spinach',
-          quantity: '1 bunch',
-          quantityAmount: 1,
-          unit: 'bunch',
-          price: 2.50,
-          category: 'Produce',
-          recipe: 'Pasta Arrabbiata',
-          dietaryTags: ['Vegan', 'Halal'],
-          isChecked: true,
-        ),
-      ],
-    ),
-    GroceryCategory(
-      name: 'Meat & Seafood',
-      items: [
-        GroceryItem(
-          id: '4',
-          name: 'Chicken Breast',
-          quantity: '500 g',
-          quantityAmount: 500,
-          unit: 'g',
-          price: 7.00,
-          category: 'Meat & Seafood',
-          recipe: 'Chicken Stir Fry',
-          dietaryTags: ['Meat'],
-        ),
-        GroceryItem(
-          id: '5',
-          name: 'Salmon Fillet',
-          quantity: '2 fillets',
-          quantityAmount: 2,
-          unit: 'fillets',
-          price: 12.00,
-          category: 'Meat & Seafood',
-          recipe: 'Grilled Salmon',
-          dietaryTags: ['Seafood', 'Halal'],
-          isChecked: true,
-        ),
-      ],
-    ),
-    GroceryCategory(
-      name: 'Dry Goods',
-      items: [
-        GroceryItem(
-          id: '6',
-          name: 'Pasta',
-          quantity: '500 g',
-          quantityAmount: 500,
-          unit: 'g',
-          price: 2.00,
-          category: 'Dry Goods',
-          recipe: 'Pasta Arrabbiata',
-          dietaryTags: ['Vegan', 'Halal'],
-        ),
-        GroceryItem(
-          id: '7',
-          name: 'Rice',
-          quantity: '2 kg',
-          quantityAmount: 2,
-          unit: 'kg',
-          price: 4.00,
-          category: 'Dry Goods',
-          recipe: 'Chicken Stir Fry',
-          dietaryTags: ['Vegan', 'Halal'],
-        ),
-        GroceryItem(
-          id: '8',
-          name: 'Olive Oil',
-          quantity: '1 L',
-          quantityAmount: 1,
-          unit: 'L',
-          price: 8.00,
-          category: 'Dry Goods',
-          recipe: 'Grilled Salmon',
-          dietaryTags: ['Vegan', 'Halal'],
-          isChecked: true,
-        ),
-        GroceryItem(
-          id: '9',
-          name: 'Tortillas',
-          quantity: '1 pack',
-          quantityAmount: 1,
-          unit: 'pack',
-          price: 3.50,
-          category: 'Dry Goods',
-          dietaryTags: ['Vegan', 'Halal'],
-        ),
-      ],
-    ),
-  ];
+  /// Budget fetched from user_profiles (default 400 until loaded)
+  double _budget = 400.00;
 
-  // ── Computed helpers ──────────────────────────────────────────────────
+  /// All items from Supabase, rebuilt into categories locally
+  List<Map<String, dynamic>> _rawItems = [];
+
+  // ── Computed categories from raw items ───────────────────────────────────
+
+  List<GroceryCategory> get _categories {
+    final map = <String, List<GroceryItem>>{};
+    for (final raw in _rawItems) {
+      final cat = raw['category'] as String? ?? 'Other';
+      map.putIfAbsent(cat, () => []).add(_toGroceryItem(raw));
+    }
+    return map.entries
+        .map((e) => GroceryCategory(name: e.key, items: e.value))
+        .toList();
+  }
+
+  GroceryItem _toGroceryItem(Map<String, dynamic> raw) {
+    return GroceryItem(
+      id: raw['id'] as String,
+      name: raw['name'] as String,
+      quantity: raw['quantity'] as String? ?? '',
+      quantityAmount: (raw['quantityAmount'] as num?)?.toDouble(),
+      unit: raw['unit'] as String?,
+      price: (raw['price'] as num?)?.toDouble() ?? 0.0,
+      category: raw['category'] as String? ?? 'Other',
+      recipe: raw['recipe'] as String?,
+      dietaryTags: List<String>.from(raw['dietaryTags'] ?? []),
+      isChecked: raw['isChecked'] as bool? ?? false,
+    );
+  }
+
+  // ── Lifecycle ─────────────────────────────────────────────────────────────
+
+  @override
+  void initState() {
+    super.initState();
+    _loadItems();
+  }
+
+  Future<void> _loadItems() async {
+    setState(() => _isLoading = true);
+    try {
+      final items = await GroceryService.getItems();
+      if (mounted) setState(() {
+        _rawItems = items;
+        _isLoading = false;
+      });
+    } catch (e) {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  // ── Computed helpers ──────────────────────────────────────────────────────
+
   List<GroceryItem> get _allItems =>
       _categories.expand((c) => c.items).toList();
   int get _checkedCount => _allItems.where((i) => i.isChecked).length;
@@ -168,42 +106,61 @@ class _GroceryListScreenState extends State<GroceryListScreen> {
       ..sort((a, b) => a.name.compareTo(b.name));
   }
 
-  // ── Mutations ─────────────────────────────────────────────────────────
-  void _toggleItem(GroceryItem item) =>
-      setState(() => item.isChecked = !item.isChecked);
+  // ── Mutations — all persist to Supabase ───────────────────────────────────
 
-  void _deleteItem(GroceryItem item) {
+  Future<void> _toggleItem(GroceryItem item) async {
+    final newVal = !item.isChecked;
+    // Optimistic update
     setState(() {
-      for (final cat in _categories) {
-        cat.items.removeWhere((i) => i.id == item.id);
-      }
-      _categories.removeWhere((c) => c.items.isEmpty);
+      final idx = _rawItems.indexWhere((r) => r['id'] == item.id);
+      if (idx != -1) _rawItems[idx]['isChecked'] = newVal;
     });
+    try {
+      await GroceryService.toggleChecked(item.id, newVal);
+    } catch (_) {
+      // Revert on failure
+      setState(() {
+        final idx = _rawItems.indexWhere((r) => r['id'] == item.id);
+        if (idx != -1) _rawItems[idx]['isChecked'] = !newVal;
+      });
+    }
   }
 
-  void _addItem(
-      String name, String quantity, double price, String category) {
-    setState(() {
-      final newItem = GroceryItem(
-        id: DateTime.now().millisecondsSinceEpoch.toString(),
+  Future<void> _deleteItem(GroceryItem item) async {
+    final backup = Map<String, dynamic>.from(
+        _rawItems.firstWhere((r) => r['id'] == item.id));
+    // Optimistic remove
+    setState(() => _rawItems.removeWhere((r) => r['id'] == item.id));
+    try {
+      await GroceryService.deleteItem(item.id);
+    } catch (_) {
+      // Revert on failure
+      if (mounted) setState(() => _rawItems.add(backup));
+    }
+  }
+
+  Future<void> _addItem(
+      String name, String quantity, double price, String category) async {
+    try {
+      final newItem = await GroceryService.addItem(
         name: name,
         quantity: quantity,
         price: price,
         category: category,
       );
-      final cat = _categories.firstWhere(
-        (c) => c.name == category,
-        orElse: () {
-          final nc = GroceryCategory(name: category, items: []);
-          _categories.add(nc);
-          return nc;
-        },
-      );
-      cat.items.add(newItem);
-    });
+      if (mounted) setState(() => _rawItems.add(newItem));
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to add item: $e'),
+              backgroundColor: Colors.red),
+        );
+      }
+    }
   }
 
-  // ── Edit mode ─────────────────────────────────────────────────────────
+  // ── Edit mode ─────────────────────────────────────────────────────────────
+
   void _toggleEditMode() => setState(() => _isEditMode = !_isEditMode);
 
   String _calcPPU(double price, double? qty, String? unit) {
@@ -216,10 +173,10 @@ class _GroceryListScreenState extends State<GroceryListScreen> {
   void _showEditItemSheet(GroceryItem item) {
     final nameCtrl = TextEditingController(text: item.name);
     final qtyCtrl =
-        TextEditingController(text: item.quantityAmount?.toString() ?? '');
+    TextEditingController(text: item.quantityAmount?.toString() ?? '');
     final unitCtrl = TextEditingController(text: item.unit ?? '');
     final priceCtrl =
-        TextEditingController(text: item.price.toStringAsFixed(2));
+    TextEditingController(text: item.price.toStringAsFixed(2));
 
     final ppuNotifier = ValueNotifier<String>(
         _calcPPU(item.price, item.quantityAmount, item.unit));
@@ -249,7 +206,7 @@ class _GroceryListScreenState extends State<GroceryListScreen> {
       backgroundColor: Colors.transparent,
       builder: (ctx) => Padding(
         padding:
-            EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
+        EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
         child: Container(
           decoration: const BoxDecoration(
             color: Colors.white,
@@ -260,7 +217,6 @@ class _GroceryListScreenState extends State<GroceryListScreen> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Drag handle
               Center(
                 child: Container(
                   width: 40,
@@ -275,7 +231,6 @@ class _GroceryListScreenState extends State<GroceryListScreen> {
               const Text('Edit Item',
                   style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700)),
               const SizedBox(height: 20),
-              // Item name
               TextField(
                 controller: nameCtrl,
                 decoration: InputDecoration(
@@ -285,13 +240,12 @@ class _GroceryListScreenState extends State<GroceryListScreen> {
                 ),
               ),
               const SizedBox(height: 12),
-              // Quantity + Unit
               Row(children: [
                 Expanded(
                   child: TextField(
                     controller: qtyCtrl,
-                    keyboardType: const TextInputType.numberWithOptions(
-                        decimal: true),
+                    keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
                     decoration: InputDecoration(
                       labelText: 'Quantity',
                       border: inputBorder,
@@ -312,13 +266,12 @@ class _GroceryListScreenState extends State<GroceryListScreen> {
                 ),
               ]),
               const SizedBox(height: 12),
-              // Price + live per-unit display
               Row(children: [
                 Expanded(
                   child: TextField(
                     controller: priceCtrl,
-                    keyboardType: const TextInputType.numberWithOptions(
-                        decimal: true),
+                    keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
                     decoration: InputDecoration(
                       labelText: 'Price',
                       prefixText: _sym,
@@ -345,7 +298,8 @@ class _GroceryListScreenState extends State<GroceryListScreen> {
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           const Text('Per unit',
-                              style: TextStyle(fontSize: 11, color: Colors.grey)),
+                              style:
+                              TextStyle(fontSize: 11, color: Colors.grey)),
                           Text(
                             ppu.isEmpty ? '—' : ppu,
                             style: const TextStyle(
@@ -365,24 +319,36 @@ class _GroceryListScreenState extends State<GroceryListScreen> {
                 width: double.infinity,
                 height: 52,
                 child: ElevatedButton(
-                  onPressed: () {
-                    setState(() {
-                      final n = nameCtrl.text.trim();
-                      if (n.isNotEmpty) item.name = n;
-                      item.price =
-                          double.tryParse(priceCtrl.text) ?? item.price;
-                      final qty = double.tryParse(qtyCtrl.text);
-                      item.quantityAmount = qty;
-                      final u = unitCtrl.text.trim();
-                      item.unit = u.isEmpty ? null : u;
-                      if (qty != null) {
-                        final qStr = qty == qty.roundToDouble()
-                            ? qty.round().toString()
-                            : qty.toStringAsFixed(1);
-                        item.quantity = u.isNotEmpty ? '$qStr $u' : qStr;
+                  onPressed: () async {
+                    final n = nameCtrl.text.trim();
+                    final p = double.tryParse(priceCtrl.text) ?? item.price;
+                    final qty = double.tryParse(qtyCtrl.text);
+                    final u = unitCtrl.text.trim();
+                    String newQty = item.quantity;
+                    if (qty != null) {
+                      final qStr = qty == qty.roundToDouble()
+                          ? qty.round().toString()
+                          : qty.toStringAsFixed(1);
+                      newQty = u.isNotEmpty ? '$qStr $u' : qStr;
+                    }
+                    try {
+                      final updated = await GroceryService.updateItem(
+                        id: item.id,
+                        name: n.isNotEmpty ? n : null,
+                        quantity: newQty,
+                        quantityAmount: qty,
+                        unit: u.isNotEmpty ? u : null,
+                        price: p,
+                      );
+                      if (mounted) {
+                        setState(() {
+                          final idx =
+                          _rawItems.indexWhere((r) => r['id'] == item.id);
+                          if (idx != -1) _rawItems[idx] = updated;
+                        });
                       }
-                    });
-                    Navigator.pop(ctx);
+                    } catch (_) {}
+                    if (ctx.mounted) Navigator.pop(ctx);
                   },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF2E7D32),
@@ -392,8 +358,8 @@ class _GroceryListScreenState extends State<GroceryListScreen> {
                     elevation: 0,
                   ),
                   child: const Text('Save Changes',
-                      style: TextStyle(
-                          fontSize: 16, fontWeight: FontWeight.w600)),
+                      style:
+                      TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
                 ),
               ),
             ],
@@ -403,7 +369,8 @@ class _GroceryListScreenState extends State<GroceryListScreen> {
     );
   }
 
-  // ── Share ─────────────────────────────────────────────────────────────
+  // ── Share ─────────────────────────────────────────────────────────────────
+
   void _shareList() {
     final buf = StringBuffer();
     buf.writeln('🛒 Grocery List');
@@ -418,7 +385,8 @@ class _GroceryListScreenState extends State<GroceryListScreen> {
       }
       buf.writeln();
     }
-    final grand = _allItems.fold(0.0, (s, i) => s + i.price).toStringAsFixed(2);
+    final grand =
+    _allItems.fold(0.0, (s, i) => s + i.price).toStringAsFixed(2);
     buf.writeln('Total: $_sym$grand');
     buf.writeln(
         'Spent: $_sym${_spentTotal.toStringAsFixed(2)} / Budget: $_sym${_budget.toStringAsFixed(2)}');
@@ -434,7 +402,6 @@ class _GroceryListScreenState extends State<GroceryListScreen> {
     );
   }
 
-  // ── Add item ──────────────────────────────────────────────────────────
   void _showAddItemSheet() {
     showModalBottomSheet(
       context: context,
@@ -448,36 +415,52 @@ class _GroceryListScreenState extends State<GroceryListScreen> {
     );
   }
 
-  // ── Build ─────────────────────────────────────────────────────────────
+  // ── Build ─────────────────────────────────────────────────────────────────
+
   @override
   Widget build(BuildContext context) {
+    if (_isLoading) {
+      return const Scaffold(
+        backgroundColor: Color(0xFFF3F8F3),
+        body: Center(
+          child: CircularProgressIndicator(color: Color(0xFF2E7D32)),
+        ),
+      );
+    }
+
     return Scaffold(
       backgroundColor: const Color(0xFFF3F8F3),
       body: SafeArea(
-        child: Column(children: [
-          _buildHeader(),
-          Expanded(
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
-              children: [
-                ProgressCard(
-                  checkedCount: _checkedCount,
-                  totalCount: _totalCount,
-                  spentTotal: _spentTotal,
-                  budget: _budget,
-                  currencySymbol: _sym,
-                ),
-                const SizedBox(height: 16),
-                _buildToggle(),
-                const SizedBox(height: 16),
-                ...(_showByRecipe ? _buildRecipeList() : _buildCategoryList()),
-                const SizedBox(height: 8),
-                _buildAddCustomButton(),
-                const SizedBox(height: 80),
-              ],
+        child: RefreshIndicator(
+          onRefresh: _loadItems,
+          color: const Color(0xFF2E7D32),
+          child: Column(children: [
+            _buildHeader(),
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
+                children: [
+                  ProgressCard(
+                    checkedCount: _checkedCount,
+                    totalCount: _totalCount,
+                    spentTotal: _spentTotal,
+                    budget: _budget,
+                    currencySymbol: _sym,
+                  ),
+                  const SizedBox(height: 16),
+                  _buildToggle(),
+                  const SizedBox(height: 16),
+                  ...(_showByRecipe
+                      ? _buildRecipeList()
+                      : _buildCategoryList()),
+                  const SizedBox(height: 8),
+                  _buildAddCustomButton(),
+                  const SizedBox(height: 80),
+                ],
+              ),
             ),
-          ),
-        ]),
+          ]),
+        ),
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: _showAddItemSheet,
@@ -489,7 +472,6 @@ class _GroceryListScreenState extends State<GroceryListScreen> {
     );
   }
 
-  // ── Header ────────────────────────────────────────────────────────────
   Widget _buildHeader() {
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 16, 16, 8),
@@ -516,7 +498,9 @@ class _GroceryListScreenState extends State<GroceryListScreen> {
                     : '$_remainingCount items remaining',
                 style: TextStyle(
                   fontSize: 13,
-                  color: _isEditMode ? const Color(0xFF2E7D32) : Colors.grey.shade600,
+                  color: _isEditMode
+                      ? const Color(0xFF2E7D32)
+                      : Colors.grey.shade600,
                 ),
               ),
             ],
@@ -535,19 +519,15 @@ class _GroceryListScreenState extends State<GroceryListScreen> {
     );
   }
 
-  Widget _headerBtn(
-    IconData icon,
-    String label,
-    VoidCallback onTap, {
-    bool withLabel = false,
-    bool active = false,
-  }) {
+  Widget _headerBtn(IconData icon, String label, VoidCallback onTap,
+      {bool withLabel = false, bool active = false}) {
     return Container(
       decoration: BoxDecoration(
         color: active ? const Color(0xFF2E7D32) : const Color(0xFFE8F5E9),
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
-            color: active ? const Color(0xFF2E7D32) : const Color(0xFFCCE5CC)),
+            color:
+            active ? const Color(0xFF2E7D32) : const Color(0xFFCCE5CC)),
       ),
       child: Material(
         color: Colors.transparent,
@@ -562,12 +542,15 @@ class _GroceryListScreenState extends State<GroceryListScreen> {
               children: [
                 Icon(icon,
                     size: 18,
-                    color: active ? Colors.white : const Color(0xFF2E7D32)),
+                    color:
+                    active ? Colors.white : const Color(0xFF2E7D32)),
                 if (withLabel) ...[
                   const SizedBox(width: 4),
                   Text(label,
                       style: TextStyle(
-                        color: active ? Colors.white : const Color(0xFF2E7D32),
+                        color: active
+                            ? Colors.white
+                            : const Color(0xFF2E7D32),
                         fontWeight: FontWeight.w600,
                         fontSize: 14,
                       )),
@@ -580,7 +563,6 @@ class _GroceryListScreenState extends State<GroceryListScreen> {
     );
   }
 
-  // ── Toggle ────────────────────────────────────────────────────────────
   Widget _buildToggle() {
     return Container(
       height: 44,
@@ -608,11 +590,11 @@ class _GroceryListScreenState extends State<GroceryListScreen> {
             borderRadius: BorderRadius.circular(8),
             boxShadow: sel
                 ? [
-                    BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.06),
-                        blurRadius: 4,
-                        offset: const Offset(0, 1))
-                  ]
+              BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.06),
+                  blurRadius: 4,
+                  offset: const Offset(0, 1))
+            ]
                 : null,
           ),
           child: Row(
@@ -620,13 +602,16 @@ class _GroceryListScreenState extends State<GroceryListScreen> {
             children: [
               Icon(icon,
                   size: 16,
-                  color: sel ? const Color(0xFF1A1A1A) : Colors.grey.shade500),
+                  color:
+                  sel ? const Color(0xFF1A1A1A) : Colors.grey.shade500),
               const SizedBox(width: 6),
               Text(label,
                   style: TextStyle(
                     fontSize: 14,
                     fontWeight: sel ? FontWeight.w600 : FontWeight.w400,
-                    color: sel ? const Color(0xFF1A1A1A) : Colors.grey.shade500,
+                    color: sel
+                        ? const Color(0xFF1A1A1A)
+                        : Colors.grey.shade500,
                   )),
             ],
           ),
@@ -635,7 +620,6 @@ class _GroceryListScreenState extends State<GroceryListScreen> {
     );
   }
 
-  // ── Category list ─────────────────────────────────────────────────────
   List<Widget> _buildCategoryList() {
     final out = <Widget>[];
     for (final cat in _categories) {
@@ -648,10 +632,28 @@ class _GroceryListScreenState extends State<GroceryListScreen> {
       }
       out.add(const SizedBox(height: 8));
     }
+    if (out.isEmpty) {
+      out.add(Center(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 60),
+          child: Column(
+            children: [
+              Icon(Icons.shopping_cart_outlined,
+                  size: 56, color: Colors.grey[300]),
+              const SizedBox(height: 16),
+              const Text('Your grocery list is empty.',
+                  style: TextStyle(color: Colors.grey, fontSize: 15)),
+              const SizedBox(height: 8),
+              Text('Tap + to add items',
+                  style: TextStyle(color: Colors.grey[400], fontSize: 13)),
+            ],
+          ),
+        ),
+      ));
+    }
     return out;
   }
 
-  // ── Recipe list ───────────────────────────────────────────────────────
   List<Widget> _buildRecipeList() {
     final out = <Widget>[];
     final recipes = _recipeGroups;
@@ -682,7 +684,8 @@ class _GroceryListScreenState extends State<GroceryListScreen> {
     final total = recipe.items.length;
     final sub = recipe.items.fold(0.0, (s, i) => s + i.price);
     return Row(children: [
-      const Icon(Icons.restaurant_outlined, size: 18, color: Color(0xFF2E7D32)),
+      const Icon(Icons.restaurant_outlined,
+          size: 18, color: Color(0xFF2E7D32)),
       const SizedBox(width: 8),
       Expanded(
         child: Text(recipe.name,
@@ -732,7 +735,6 @@ class _GroceryListScreenState extends State<GroceryListScreen> {
     );
   }
 
-  // ── Add custom button ─────────────────────────────────────────────────
   Widget _buildAddCustomButton() {
     return GestureDetector(
       onTap: _showAddItemSheet,

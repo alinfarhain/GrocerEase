@@ -10,6 +10,7 @@
 import 'package:flutter/material.dart';
 import '../models/grocery_item.dart';
 import '../globals/app_state.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 // ═══════════════════════════════════════════════════════════
 //  ProfileScreen
@@ -31,11 +32,6 @@ class ProfileScreen extends StatefulWidget {
 class _ProfileScreenState extends State<ProfileScreen> {
   double _budget = 115.00;
   bool _notificationsEnabled = true;
-
-  // ── Dummy stats ───────────────────────────────────────────────────────
-  final int _recipesCount = 12;
-  final int _mealsPlanned = 8;
-  final double _amountSaved = 47.50;
 
   // ── Pickers / dialogs ─────────────────────────────────────────────────
 
@@ -99,6 +95,33 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
+  @override
+  void initState() {
+      super.initState();
+      _loadBudget();
+    }
+
+    Future<void> _loadBudget() async {
+      final userId = Supabase.instance.client.auth.currentUser?.id;
+      if (userId == null) return;
+      try {
+        final row = await Supabase.instance.client
+            .from('user_profiles')
+            .select('budget, dietary_preference')
+            .eq('id', userId)
+            .maybeSingle();
+        if (row != null && mounted) {
+          setState(() {
+            _budget = (row['budget'] as num?)?.toDouble() ?? 400.0;
+          });
+          final pref = row['dietary_preference'] as String?;
+          if (pref != null && pref.isNotEmpty) {
+            widget.onDietaryChanged(pref);
+          }
+        }
+      } catch (_) {}
+    }
+
   void _editBudget() {
     final appState = AppState.of(context, listen: false);
     final ctrl =
@@ -130,9 +153,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
               child: const Text('Cancel')),
           ElevatedButton(
             onPressed: () {
-              setState(() =>
-              _budget = double.tryParse(ctrl.text) ?? _budget);
+              final newBudget = double.tryParse(ctrl.text) ?? _budget;
+              setState(() => _budget = newBudget);
               Navigator.pop(ctx);
+// Persist to Supabase
+              final userId = Supabase.instance.client.auth.currentUser?.id;
+              if (userId != null) {
+                Supabase.instance.client
+                    .from('user_profiles')
+                    .update({'budget': newBudget})
+                    .eq('id', userId)
+                    .catchError((_) {});
+              }
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: const Color(0xFF2E7D32),
@@ -365,6 +397,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   // ── Profile card (avatar + name + badge + stats) ──────────────────────
   Widget _buildProfileCard(AppState appState) {
+    final user = Supabase.instance.client.auth.currentUser;
+    final email = user?.email ?? '';
+    final fullName = (user?.userMetadata?['full_name'] as String?)
+        ?.trim()
+        .isNotEmpty == true
+        ? user!.userMetadata!['full_name'] as String
+        : email.split('@').first; // fallback to email username
+
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -379,43 +419,37 @@ class _ProfileScreenState extends State<ProfileScreen> {
       ),
       child: Column(
         children: [
-          // Avatar row
           Row(children: [
-            // Green gradient circle avatar
             Container(
               width: 64,
               height: 64,
-              decoration: BoxDecoration(
+              decoration: const BoxDecoration(
                 shape: BoxShape.circle,
-                gradient: const LinearGradient(
-                  colors: [Color(0xFF43A047), Color(0xFF1B5E20)],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                boxShadow: [
-                  BoxShadow(
-                      color: const Color(0xFF2E7D32).withValues(alpha: 0.3),
-                      blurRadius: 8,
-                      offset: const Offset(0, 3))
-                ],
+                color: Color(0xFF1B5E20),
               ),
-              child: const Icon(Icons.person_rounded,
-                  size: 36, color: Colors.white),
+              child: Center(
+                child: Text(
+                  fullName.isNotEmpty ? fullName[0].toUpperCase() : '?',
+                  style: const TextStyle(
+                      fontSize: 26,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white),
+                ),
+              ),
             ),
             const SizedBox(width: 16),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('John Doe',
-                      style: TextStyle(
+                  Text(fullName,
+                      style: const TextStyle(
                           fontSize: 20, fontWeight: FontWeight.w700)),
                   const SizedBox(height: 2),
-                  const Text('john.doe@example.com',
+                  Text(email,
                       style:
-                      TextStyle(color: Colors.grey, fontSize: 13)),
+                      const TextStyle(color: Colors.grey, fontSize: 13)),
                   const SizedBox(height: 6),
-                  // Premium badge
                   Container(
                     padding: const EdgeInsets.symmetric(
                         horizontal: 10, vertical: 3),
@@ -425,7 +459,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       border: Border.all(
                           color: const Color(0xFF81C784), width: 1),
                     ),
-                    child: const Text('Premium Member',
+                    child: const Text('GrocerEase Member',
                         style: TextStyle(
                             fontSize: 11,
                             color: Color(0xFF2E7D32),
@@ -438,23 +472,56 @@ class _ProfileScreenState extends State<ProfileScreen> {
           const SizedBox(height: 20),
           const Divider(height: 1),
           const SizedBox(height: 16),
-          // Stats row
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: [
-              _statItem(_recipesCount.toString(), 'Recipes'),
-              _statDivider(),
-              _statItem(_mealsPlanned.toString(), 'Meals Planned'),
-              _statDivider(),
-              _statItem(
-                  '${appState.currency.symbol.trim()}${_amountSaved.toStringAsFixed(0)}',
-                  'Saved'),
-            ],
+          // Live stats from Supabase
+          FutureBuilder<List<int>>(
+            future: _fetchStats(),
+            builder: (context, snap) {
+              final recipesCount = snap.data?[0] ?? 0;
+              final mealsPlanned = snap.data?[1] ?? 0;
+              return Row(
+                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                children: [
+                  _statItem(recipesCount.toString(), 'Recipes'),
+                  _statDivider(),
+                  _statItem(mealsPlanned.toString(), 'Meals Planned'),
+                  _statDivider(),
+                  _statItem(
+                      '${appState.currency.symbol.trim()}${_budget.toStringAsFixed(0)}',
+                      'Budget'),
+                ],
+              );
+            },
           ),
         ],
       ),
     );
   }
+
+  Future<List<int>> _fetchStats() async {
+    final userId = Supabase.instance.client.auth.currentUser?.id;
+    if (userId == null) return [0, 0];
+    try {
+      final recipes = await Supabase.instance.client
+          .from('recipes')
+          .select('id')
+          .eq('user_id', userId);
+      final now = DateTime.now();
+      final weekStart = now.subtract(Duration(days: now.weekday - 1));
+      final weekEnd = weekStart.add(const Duration(days: 6));
+      final meals = await Supabase.instance.client
+          .from('meal_plans')
+          .select('id')
+          .eq('user_id', userId)
+          .gte('planned_date',
+          '${weekStart.year}-${weekStart.month.toString().padLeft(2, '0')}-${weekStart.day.toString().padLeft(2, '0')}')
+          .lte('planned_date',
+          '${weekEnd.year}-${weekEnd.month.toString().padLeft(2, '0')}-${weekEnd.day.toString().padLeft(2, '0')}');
+      return [(recipes as List).length, (meals as List).length];
+    } catch (_) {
+      return [0, 0];
+    }
+  }
+
 
   Widget _statItem(String value, String label) {
     return Column(
@@ -534,7 +601,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           trailing: Switch(
             value: _notificationsEnabled,
             onChanged: (v) => setState(() => _notificationsEnabled = v),
-            activeColor: const Color(0xFF2E7D32),
+            activeTrackColor: const Color(0xFF2E7D32),
             materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
           ),
         ),
