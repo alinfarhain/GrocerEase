@@ -247,21 +247,28 @@ class _SearchRecipesState extends State<SearchRecipes> {
   }
 
   Widget _buildHeader() {
-    return Container(
-      color: const Color(0xFFF9F9F9),
-      padding: const EdgeInsets.fromLTRB(24.0, 24.0, 24.0, 16.0),
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24.0, 24.0, 24.0, 0.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Plan',
-              style: TextStyle(
-                  fontSize: 28.0,
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xFF003D33))),
+          // ── Top: Plan title ───────────────────────────────────────────
+          const Text(
+            'Plan',
+            style: TextStyle(
+              fontSize: 28.0,
+              fontWeight: FontWeight.bold,
+              color: Color(0xFF003D33),
+            ),
+          ),
           const SizedBox(height: 4.0),
-          const Text('Manage meals and recipes',
-              style: TextStyle(fontSize: 14.0, color: Colors.grey)),
+          const Text(
+            'Manage meals and recipes',
+            style: TextStyle(fontSize: 14.0, color: Colors.grey),
+          ),
           const SizedBox(height: 24.0),
+
+          // ── Meal Plan | My Recipes top tabs ───────────────────────────
           Container(
             height: 50.0,
             padding: const EdgeInsets.all(4.0),
@@ -271,75 +278,122 @@ class _SearchRecipesState extends State<SearchRecipes> {
             ),
             child: Row(
               children: [
+                // Meal Plan — inactive, taps back to plan page
                 Expanded(
                   child: GestureDetector(
-                    onTap: () => context.pop(),
+                    onTap: () {
+                      context.pop(); // back to my_recipes
+                      context.pop(); // back to plan page
+                    },
                     child: Container(
                       decoration: BoxDecoration(
-                          color: Colors.transparent,
-                          borderRadius: BorderRadius.circular(8.0)),
+                        color: Colors.transparent,
+                        borderRadius: BorderRadius.circular(8.0),
+                      ),
                       alignment: Alignment.center,
-                      child: const Text('My Saved Recipes',
-                          style: TextStyle(
-                              fontWeight: FontWeight.w600, color: Colors.grey)),
+                      child: const Text(
+                        'Meal Plan',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                          color: Colors.grey,
+                        ),
+                      ),
                     ),
                   ),
                 ),
+                // My Recipes — active (white pill)
                 Expanded(
                   child: Container(
                     decoration: BoxDecoration(
                       color: Colors.white,
                       borderRadius: BorderRadius.circular(8.0),
-                      boxShadow: [
-                        BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.05),
-                            blurRadius: 4.0,
-                            offset: const Offset(0.0, 2.0))
-                      ],
                     ),
                     alignment: Alignment.center,
-                    child: const Text('Search Recipes',
-                        style: TextStyle(
-                            fontWeight: FontWeight.w600,
-                            color: Color(0xFF003D33))),
+                    child: const Text(
+                      'My Recipes',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF003D33),
+                      ),
+                    ),
                   ),
                 ),
               ],
             ),
           ),
-          const SizedBox(height: 20.0),
-          Row(
+          const SizedBox(height: 32.0),
+
+          // ── My Recipes title row — NO edit button ─────────────────────
+          const Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('Search Recipes',
-                        style: TextStyle(
-                            fontSize: 22.0,
-                            fontWeight: FontWeight.bold,
-                            color: Color(0xFF003D33))),
-                    Text('Discover recipes from the internet',
-                        style: TextStyle(fontSize: 13.0, color: Colors.grey)),
-                  ],
+              Text(
+                'My Recipes',
+                style: TextStyle(
+                  fontSize: 24.0,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF003D33),
                 ),
               ),
-              if (_hasSearched && !_isSearching && _searchError == null)
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 12.0, vertical: 6.0),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFE8F5E9),
-                    borderRadius: BorderRadius.circular(20.0),
-                  ),
-                  child: Text('${_filteredResults.length} found',
-                      style: const TextStyle(
-                          color: Color(0xFF1BAB52),
-                          fontWeight: FontWeight.w600,
-                          fontSize: 13.0)),
-                ),
+              Text(
+                'View Saved Recipes',
+                style: TextStyle(fontSize: 14.0, color: Colors.grey),
+              ),
             ],
           ),
+          const SizedBox(height: 24.0),
+
+          // ── My Saved Recipes | Search Recipes sub-tabs ────────────────
+          Container(
+            height: 44.0,
+            padding: const EdgeInsets.all(4.0),
+            decoration: BoxDecoration(
+              color: const Color(0xFFE0E0E0).withValues(alpha: 0.4),
+              borderRadius: BorderRadius.circular(12.0),
+            ),
+            child: Row(
+              children: [
+                // My Saved Recipes — inactive, taps back
+                Expanded(
+                  child: GestureDetector(
+                    onTap: () => context.pop(),
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: Colors.transparent,
+                        borderRadius: BorderRadius.circular(8.0),
+                      ),
+                      alignment: Alignment.center,
+                      child: const Text(
+                        'My Saved Recipes',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                          color: Colors.grey,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                // Search Recipes — active (white pill)
+                Expanded(
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(8.0),
+                    ),
+                    alignment: Alignment.center,
+                    child: const Text(
+                      'Search Recipes',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF003D33),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16.0),
         ],
       ),
     );

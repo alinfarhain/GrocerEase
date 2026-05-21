@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import '../globals/app_state.dart';
 import 'package:go_router/go_router.dart';
-import '../services/recipe_service.dart'; // ✅ NEW
+import '../services/recipe_service.dart';
+import '../services/meal_plan_service.dart';
 
 class MyRecipes extends StatefulWidget {
   const MyRecipes({super.key, this.initialEditMode = false});
@@ -968,33 +969,395 @@ class _MyRecipesState extends State<MyRecipes> {
   }
 
   Future<void> _addToPlan(Map<String, dynamic> recipe) async {
-    final DateTime? picked = await showDatePicker(
+    DateTime selectedDate = DateTime.now();
+    String selectedCategory = 'Breakfast';
+    final TextEditingController customCatController = TextEditingController();
+    bool isSaving = false;
+
+    await showModalBottomSheet(
       context: context,
-      initialDate: DateTime.now(),
-      firstDate: DateTime.now(),
-      lastDate: DateTime(2101),
-      builder: (context, child) => Theme(
-        data: Theme.of(context).copyWith(
-          colorScheme: const ColorScheme.light(
-            primary: Color(0xFF1BAB52),
-            onPrimary: Colors.white,
-            onSurface: Color(0xFF003D33),
-          ),
-        ),
-        child: child!,
-      ),
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            return Padding(
+              padding: EdgeInsets.only(
+                  bottom: MediaQuery.of(context).viewInsets.bottom),
+              child: Container(
+                decoration: const BoxDecoration(
+                  color: Colors.white,
+                  borderRadius:
+                  BorderRadius.vertical(top: Radius.circular(28)),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // ── Handle ────────────────────────────────────────
+                    const SizedBox(height: 12),
+                    Container(
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: Colors.grey[300],
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+
+                    // ── Header ────────────────────────────────────────
+                    Padding(
+                      padding:
+                      const EdgeInsets.symmetric(horizontal: 24),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 44,
+                            height: 44,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFE8F5E9),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: const Icon(
+                                Icons.calendar_today_outlined,
+                                color: Color(0xFF1BAB52),
+                                size: 20),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment:
+                              CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  'Add to Plan',
+                                  style: TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                    color: Color(0xFF003D33),
+                                  ),
+                                ),
+                                Text(
+                                  recipe['name'] ?? 'Recipe',
+                                  style: const TextStyle(
+                                      fontSize: 13,
+                                      color: Colors.grey),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ],
+                            ),
+                          ),
+                          IconButton(
+                            onPressed: () {
+                              Navigator.pop(context);
+                              customCatController.dispose();
+                            },
+                            icon: const Icon(Icons.close),
+                            style: IconButton.styleFrom(
+                                backgroundColor: Colors.grey[100]),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    const SizedBox(height: 24),
+                    Padding(
+                      padding:
+                      const EdgeInsets.symmetric(horizontal: 24),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // ── Date selector ─────────────────────────
+                          const Text(
+                            'Select Date',
+                            style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 15,
+                                color: Color(0xFF003D33)),
+                          ),
+                          const SizedBox(height: 10),
+                          GestureDetector(
+                            onTap: () async {
+                              final picked = await showDatePicker(
+                                context: context,
+                                initialDate: selectedDate,
+                                firstDate: DateTime.now(),
+                                lastDate: DateTime(2101),
+                                builder: (context, child) => Theme(
+                                  data: Theme.of(context).copyWith(
+                                    colorScheme:
+                                    const ColorScheme.light(
+                                      primary: Color(0xFF1BAB52),
+                                      onPrimary: Colors.white,
+                                      onSurface: Color(0xFF003D33),
+                                    ),
+                                  ),
+                                  child: child!,
+                                ),
+                              );
+                              if (picked != null) {
+                                setModalState(
+                                        () => selectedDate = picked);
+                              }
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 16, vertical: 14),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFF7FFF9),
+                                borderRadius:
+                                BorderRadius.circular(14),
+                                border: Border.all(
+                                    color: const Color(0xFF1BAB52)
+                                        .withOpacity(0.4)),
+                              ),
+                              child: Row(
+                                children: [
+                                  const Icon(
+                                      Icons.calendar_month_outlined,
+                                      color: Color(0xFF1BAB52),
+                                      size: 20),
+                                  const SizedBox(width: 12),
+                                  Text(
+                                    '${selectedDate.day}/${selectedDate.month}/${selectedDate.year}  —  '
+                                        '${_weekdayName(selectedDate.weekday)}',
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                      color: Color(0xFF003D33),
+                                      fontSize: 14,
+                                    ),
+                                  ),
+                                  const Spacer(),
+                                  Icon(Icons.edit_outlined,
+                                      size: 16,
+                                      color: Colors.grey[400]),
+                                ],
+                              ),
+                            ),
+                          ),
+
+                          const SizedBox(height: 20),
+
+                          // ── Meal Category ─────────────────────────
+                          const Text(
+                            'Meal Category',
+                            style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 15,
+                                color: Color(0xFF003D33)),
+                          ),
+                          const SizedBox(height: 10),
+                          Wrap(
+                            spacing: 10,
+                            runSpacing: 10,
+                            children: [
+                              'Breakfast',
+                              'Lunch',
+                              'Dinner',
+                              'High Tea',
+                              'Custom',
+                            ].map((cat) {
+                              final isSelected =
+                                  selectedCategory == cat;
+                              return GestureDetector(
+                                onTap: () => setModalState(
+                                        () => selectedCategory = cat),
+                                child: AnimatedContainer(
+                                  duration:
+                                  const Duration(milliseconds: 180),
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 16, vertical: 10),
+                                  decoration: BoxDecoration(
+                                    color: isSelected
+                                        ? const Color(0xFFE8F5E9)
+                                        : Colors.grey[100],
+                                    borderRadius:
+                                    BorderRadius.circular(20),
+                                    border: Border.all(
+                                      color: isSelected
+                                          ? const Color(0xFF1BAB52)
+                                          : Colors.grey[300]!,
+                                      width: isSelected ? 1.5 : 1,
+                                    ),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      if (isSelected) ...[
+                                        const Icon(Icons.check,
+                                            size: 14,
+                                            color: Color(0xFF1BAB52)),
+                                        const SizedBox(width: 4),
+                                      ],
+                                      Text(
+                                        cat,
+                                        style: TextStyle(
+                                          color: isSelected
+                                              ? const Color(0xFF1BAB52)
+                                              : Colors.black87,
+                                          fontWeight: isSelected
+                                              ? FontWeight.w600
+                                              : FontWeight.normal,
+                                          fontSize: 13,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              );
+                            }).toList(),
+                          ),
+
+                          // ── Custom category field ─────────────────
+                          if (selectedCategory == 'Custom') ...[
+                            const SizedBox(height: 14),
+                            TextField(
+                              controller: customCatController,
+                              autofocus: true,
+                              decoration: InputDecoration(
+                                hintText:
+                                'e.g. Brunch, Supper, Midnight Snack…',
+                                hintStyle:
+                                TextStyle(color: Colors.grey[400]),
+                                prefixIcon: const Icon(
+                                    Icons.edit_outlined,
+                                    color: Color(0xFF1BAB52)),
+                                filled: true,
+                                fillColor: const Color(0xFFF7FFF9),
+                                border: OutlineInputBorder(
+                                  borderRadius:
+                                  BorderRadius.circular(14),
+                                  borderSide: const BorderSide(
+                                      color: Color(0xFF1BAB52)),
+                                ),
+                                focusedBorder: OutlineInputBorder(
+                                  borderRadius:
+                                  BorderRadius.circular(14),
+                                  borderSide: const BorderSide(
+                                      color: Color(0xFF1BAB52),
+                                      width: 1.5),
+                                ),
+                                enabledBorder: OutlineInputBorder(
+                                  borderRadius:
+                                  BorderRadius.circular(14),
+                                  borderSide: BorderSide(
+                                      color: Colors.grey[300]!),
+                                ),
+                                contentPadding:
+                                const EdgeInsets.symmetric(
+                                    horizontal: 16, vertical: 14),
+                              ),
+                              onChanged: (_) => setModalState(() {}),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+
+                    // ── Confirm button ────────────────────────────────
+                    const SizedBox(height: 24),
+                    Padding(
+                      padding: EdgeInsets.fromLTRB(
+                          24,
+                          0,
+                          24,
+                          MediaQuery.of(context).padding.bottom + 24),
+                      child: SizedBox(
+                        width: double.infinity,
+                        height: 56,
+                        child: ElevatedButton(
+                          onPressed: (isSaving ||
+                              (selectedCategory == 'Custom' &&
+                                  customCatController.text
+                                      .trim()
+                                      .isEmpty))
+                              ? null
+                              : () async {
+                            setModalState(() => isSaving = true);
+                            final customName =
+                            selectedCategory == 'Custom'
+                                ? customCatController.text
+                                .trim()
+                                : null;
+                            try {
+                              await MealPlanService.addMealPlan(
+                                plannedDate: selectedDate,
+                                mealCategory: selectedCategory,
+                                customCategoryName: customName,
+                                recipe: recipe,
+                              );
+                              if (context.mounted) {
+                                Navigator.pop(context);
+                                customCatController.dispose();
+                                ScaffoldMessenger.of(context)
+                                    .showSnackBar(
+                                  SnackBar(
+                                    content: Text(
+                                      '"${recipe['name']}" added to plan!',
+                                    ),
+                                    backgroundColor:
+                                    const Color(0xFF1BAB52),
+                                  ),
+                                );
+                              }
+                            } catch (e) {
+                              setModalState(
+                                      () => isSaving = false);
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context)
+                                    .showSnackBar(
+                                  SnackBar(
+                                    content: Text(
+                                        'Failed to add to plan: $e'),
+                                    backgroundColor: Colors.red,
+                                  ),
+                                );
+                              }
+                            }
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF1BAB52),
+                            foregroundColor: Colors.white,
+                            disabledBackgroundColor: Colors.grey[300],
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(16)),
+                            elevation: 0,
+                          ),
+                          child: isSaving
+                              ? const SizedBox(
+                            width: 22,
+                            height: 22,
+                            child: CircularProgressIndicator(
+                                color: Colors.white,
+                                strokeWidth: 2.5),
+                          )
+                              : const Text(
+                            'Add to Plan',
+                            style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
     );
-    if (picked != null && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            '"${recipe['name']}" added to plan for '
-                '${picked.day}/${picked.month}/${picked.year}',
-          ),
-          backgroundColor: const Color(0xFF1BAB52),
-        ),
-      );
-    }
+  }
+
+// Helper to convert weekday number → name
+  String _weekdayName(int weekday) {
+    const days = [
+      'Monday', 'Tuesday', 'Wednesday', 'Thursday',
+      'Friday', 'Saturday', 'Sunday'
+    ];
+    return days[(weekday - 1).clamp(0, 6)];
   }
 
   Widget _buildToggle() {
