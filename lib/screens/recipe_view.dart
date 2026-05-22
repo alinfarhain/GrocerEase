@@ -3,6 +3,7 @@ import '../globals/app_state.dart';
 import 'package:go_router/go_router.dart';
 import 'dart:io';
 import '../services/recipe_service.dart';
+import '../services/grocery_service.dart';
 
 class RecipeView extends StatefulWidget {
   const RecipeView({required this.recipe, super.key});
@@ -16,6 +17,7 @@ class RecipeView extends StatefulWidget {
 class _RecipeViewState extends State<RecipeView> {
   late Map<String, dynamic> _currentRecipe;
   bool _isLoading = false;
+  bool _isAddingToList = false;
 
   @override
   void initState() {
@@ -41,7 +43,6 @@ class _RecipeViewState extends State<RecipeView> {
   // ── DATA FETCHING ─────────────────────────────────────────────────────────
 
   /// Fetches full recipe details from Spoonacular (steps, tools, calories).
-  /// This is the KEY fix — complexSearch doesn't return these reliably.
   Future<void> _fetchSpoonacularDetails(String spoonacularId) async {
     setState(() => _isLoading = true);
     try {
@@ -92,6 +93,109 @@ class _RecipeViewState extends State<RecipeView> {
     final prep = (_currentRecipe['prepTimeMinutes'] as int?) ?? 0;
     final total = cook + prep;
     return total > 0 ? '${total}m' : '${cook}m';
+  }
+
+  // ── GROCERY LIST HELPERS ──────────────────────────────────────────────────
+
+  /// Infers a grocery category from an ingredient name using keyword matching.
+  String _inferCategory(String name) {
+    final n = name.toLowerCase();
+    if (RegExp(r'cheese|milk|butter|cream|egg|yogurt|cheddar|mozzarella|dairy').hasMatch(n)) {
+      return 'Dairy & Eggs';
+    }
+    if (RegExp(r'chicken|beef|pork|lamb|turkey|duck|bacon|sausage|ham|steak|mince|meat|veal').hasMatch(n)) {
+      return 'Meat & Poultry';
+    }
+    if (RegExp(r'fish|salmon|tuna|shrimp|prawn|crab|lobster|cod|tilapia|seafood|squid').hasMatch(n)) {
+      return 'Seafood';
+    }
+    if (RegExp(r'corn|pepper|tomato|onion|garlic|carrot|spinach|lettuce|avocado|potato|capsicum|bean|zucchini|broccoli|mushroom|celery|cucumber|kale|cabbage|pea|leek|chilli|chili').hasMatch(n)) {
+      return 'Vegetables & Produce';
+    }
+    if (RegExp(r'apple|banana|lemon|lime|orange|mango|strawberry|berry|grape|peach|pear|fruit').hasMatch(n)) {
+      return 'Fruits';
+    }
+    if (RegExp(r'quinoa|rice|flour|pasta|bread|oat|noodle|tortilla|wheat|grain|cereal|barley|couscous').hasMatch(n)) {
+      return 'Grains & Pasta';
+    }
+    if (RegExp(r'sauce|enchilada|salsa|verde|broth|stock|paste|canned|soup|dressing').hasMatch(n)) {
+      return 'Canned & Jarred';
+    }
+    if (RegExp(r'salt|cumin|cilantro|basil|oregano|paprika|thyme|rosemary|coriander|spice|herb|seasoning|cardamom|turmeric|cinnamon|nutmeg|pepper').hasMatch(n)) {
+      return 'Herbs & Spices';
+    }
+    if (RegExp(r'oil|olive oil|vinegar|soy sauce|mustard|mayo|mayonnaise|ketchup|syrup|honey').hasMatch(n)) {
+      return 'Oils & Condiments';
+    }
+    return 'Other';
+  }
+
+  /// Adds all recipe ingredients to the grocery list via GroceryService.
+  Future<void> _addIngredientsToGroceryList() async {
+    final ingredients = _currentRecipe['ingredients'] as List<dynamic>? ?? [];
+    if (ingredients.isEmpty) return;
+
+    setState(() => _isAddingToList = true);
+
+    // Split total recipe budget (already in MYR) evenly across ingredients.
+    final budgetStr = (_currentRecipe['budget'] ?? _currentRecipe['price'] ?? '0')
+        .toString()
+        .replaceAll('RM', '')
+        .trim();
+    final totalBudget = double.tryParse(budgetStr) ?? 0.0;
+    final pricePerIngredient = (totalBudget > 0 && ingredients.isNotEmpty)
+        ? totalBudget / ingredients.length
+        : 0.0;
+
+    final recipeName = _currentRecipe['name'] as String? ?? 'Unknown Recipe';
+
+    int added = 0;
+    int skipped = 0;
+
+    for (final ing in ingredients) {
+      if (ing is! Map) continue;
+      final name = ing['name']?.toString().trim() ?? '';
+      if (name.isEmpty) continue;
+
+      final amountStr = ing['amount']?.toString().trim() ?? '';
+      final unit = ing['unit']?.toString().trim() ?? '';
+      final quantityAmount = double.tryParse(amountStr);
+      final quantity = [amountStr, unit].where((s) => s.isNotEmpty).join(' ');
+      final category = _inferCategory(name);
+
+      try {
+        await GroceryService.addItem(
+          name: name,
+          quantity: quantity,
+          quantityAmount: quantityAmount,
+          unit: unit.isNotEmpty ? unit : null,
+          price: double.parse(pricePerIngredient.toStringAsFixed(2)),
+          category: category,
+          recipe: recipeName, // ← links item to the "By Recipe" tab
+        );
+        added++;
+      } catch (_) {
+        skipped++;
+      }
+    }
+
+    if (!mounted) return;
+    setState(() => _isAddingToList = false);
+
+    final msg = skipped == 0
+        ? '🛒 $added ingredient${added == 1 ? '' : 's'} added to your grocery list!'
+        : '🛒 $added added, $skipped failed. Check your connection.';
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(msg),
+        backgroundColor: skipped == 0 ? const Color(0xFF2E7D32) : Colors.orange,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        margin: const EdgeInsets.all(16),
+        duration: const Duration(seconds: 3),
+      ),
+    );
   }
 
   // ── WIDGET HELPERS ────────────────────────────────────────────────────────
@@ -337,14 +441,14 @@ class _RecipeViewState extends State<RecipeView> {
                                 backgroundColor: Color(0xFF1BAB52),
                               ),
                             );
-                            Navigator.pop(context);
                           }
                         } catch (e) {
                           if (mounted) {
                             ScaffoldMessenger.of(context).showSnackBar(
                               SnackBar(
-                                  content: Text('❌ Failed to save: $e'),
-                                  backgroundColor: Colors.red),
+                                content: Text('❌ Failed to save: $e'),
+                                backgroundColor: Colors.red,
+                              ),
                             );
                           }
                         }
@@ -407,37 +511,38 @@ class _RecipeViewState extends State<RecipeView> {
                       ),
                     ),
                   const SizedBox(width: 10.0),
+                  // Close button
                   GestureDetector(
                     onTap: () => Navigator.pop(context),
                     child: Container(
                       padding: const EdgeInsets.all(8.0),
                       decoration: const BoxDecoration(
-                        color: Color(0xFFF1F8E9),
+                        color: Color(0xFFEEEEEE),
                         shape: BoxShape.circle,
                       ),
                       child: const Icon(Icons.close,
-                          size: 20.0, color: Color(0xFF003D33)),
+                          size: 18.0, color: Color(0xFF003D33)),
                     ),
                   ),
                 ],
               ),
             ),
 
-            // ── Body ─────────────────────────────────────────────────────
+            // ── Scrollable body ──────────────────────────────────────────
             Expanded(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.symmetric(horizontal: 24.0),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Recipe image
-                    if (_currentRecipe['image'] != null)
+                    // ── Recipe image ──────────────────────────────────────
+                    if (_currentRecipe['image'] != null &&
+                        (_currentRecipe['image'] as String).isNotEmpty)
                       Padding(
                         padding: const EdgeInsets.only(bottom: 20.0),
                         child: ClipRRect(
-                          borderRadius: BorderRadius.circular(20.0),
-                          child: _currentRecipe['image']
-                              .toString()
+                          borderRadius: BorderRadius.circular(24.0),
+                          child: (_currentRecipe['image'] as String)
                               .startsWith('http')
                               ? Image.network(
                             _currentRecipe['image'],
@@ -490,57 +595,27 @@ class _RecipeViewState extends State<RecipeView> {
                                   style: const TextStyle(
                                     color: Color(0xFF1BAB52),
                                     fontWeight: FontWeight.w600,
-                                    fontSize: 12.0,
+                                    fontSize: 13.0,
                                   ),
                                 ),
                               ),
-                              // ✅ Tools count — shows correctly after fetch
-                              Row(
-                                children: [
-                                  if (_isLoading)
-                                    const SizedBox(
-                                      width: 12,
-                                      height: 12,
-                                      child: CircularProgressIndicator(
-                                          strokeWidth: 1.5,
-                                          color: Colors.grey),
-                                    )
-                                  else
-                                    const Icon(
-                                        Icons.restaurant_menu_outlined,
-                                        size: 16.0,
-                                        color: Colors.grey),
-                                  const SizedBox(width: 4.0),
-                                  Text(
-                                    _isLoading
-                                        ? 'Loading...'
-                                        : tools.isEmpty
-                                        ? 'No tools listed'
-                                        : '${tools.length} tool${tools.length == 1 ? '' : 's'}',
-                                    style: const TextStyle(
-                                        color: Colors.grey, fontSize: 12.0),
-                                  ),
-                                ],
+                              Text(
+                                '${tools.length} tool${tools.length == 1 ? '' : 's'} needed',
+                                style: const TextStyle(
+                                    color: Colors.grey, fontSize: 13.0),
                               ),
                             ],
                           ),
                           const SizedBox(height: 20.0),
-                          // ✅ Stats — read-only (servings not adjustable here)
+                          // Stats row
                           Row(
                             mainAxisAlignment:
                             MainAxisAlignment.spaceAround,
                             children: [
                               _buildInfoItem(
-                                Icons.access_time,
-                                _timeDisplay,
-                                'Time',
-                                const Color(0xFFE8F5E9),
-                                const Color(0xFF1BAB52),
-                              ),
-                              _buildInfoItem(
-                                Icons.attach_money,
-                                _budgetDisplay,
-                                'Budget',
+                                Icons.access_time_outlined,
+                                _isLoading ? '...' : _timeDisplay,
+                                'Cook Time',
                                 const Color(0xFFFFF3E0),
                                 const Color(0xFFFF9800),
                               ),
@@ -548,10 +623,16 @@ class _RecipeViewState extends State<RecipeView> {
                                 Icons.people_outline,
                                 '$servings',
                                 'Servings',
+                                const Color(0xFFE3F2FD),
+                                const Color(0xFF2196F3),
+                              ),
+                              _buildInfoItem(
+                                Icons.attach_money_outlined,
+                                _isLoading ? '...' : _budgetDisplay,
+                                'Budget',
                                 const Color(0xFFE8F5E9),
                                 const Color(0xFF1BAB52),
                               ),
-                              // ✅ Calories — shows correctly after Spoonacular fetch
                               _buildInfoItem(
                                 Icons.local_fire_department_outlined,
                                 _isLoading ? '...' : _caloriesDisplay,
@@ -583,7 +664,6 @@ class _RecipeViewState extends State<RecipeView> {
                       ],
                     ),
                     const SizedBox(height: 14.0),
-                    // ✅ Tools list — filled after fetchSpoonacularDetails
                     if (_isLoading)
                       _buildLoadingSection('')
                     else if (tools.isEmpty)
@@ -659,6 +739,50 @@ class _RecipeViewState extends State<RecipeView> {
                         ],
                       ),
                     ),
+                    const SizedBox(height: 16.0),
+
+                    // ── Add to Grocery List button ────────────────────────
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        onPressed: (_isAddingToList || ingredients.isEmpty)
+                            ? null
+                            : _addIngredientsToGroceryList,
+                        icon: _isAddingToList
+                            ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                            : const Icon(Icons.add_shopping_cart_outlined,
+                            size: 20),
+                        label: Text(
+                          _isAddingToList
+                              ? 'Adding to list…'
+                              : 'Add Ingredients to Grocery List',
+                          style: const TextStyle(
+                            fontSize: 14.0,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF1BAB52),
+                          foregroundColor: Colors.white,
+                          disabledBackgroundColor:
+                          const Color(0xFF1BAB52).withValues(alpha: 0.5),
+                          disabledForegroundColor: Colors.white70,
+                          padding:
+                          const EdgeInsets.symmetric(vertical: 14.0),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14.0),
+                          ),
+                          elevation: 0,
+                        ),
+                      ),
+                    ),
                     const SizedBox(height: 20.0),
 
                     // ── Cooking Steps ─────────────────────────────────────
@@ -682,7 +806,6 @@ class _RecipeViewState extends State<RecipeView> {
                             ),
                           ),
                           const SizedBox(height: 16.0),
-                          // ✅ Steps — filled after fetchSpoonacularDetails
                           if (_isLoading)
                             _buildLoadingSection('')
                           else if (instructions.isEmpty)

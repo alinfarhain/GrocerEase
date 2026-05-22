@@ -16,9 +16,13 @@ class AppState extends ChangeNotifier {
   AppCurrency _currency = AppCurrency.supported.first;
   String _dietaryPreference = 'None';
 
+  // ── Budget (global, shared between Profile and GroceryList) ───────────────
+  double _budget = 400.0;
+
   ThemeData get theme => _theme;
   AppCurrency get currency => _currency;
   String get dietaryPreference => _dietaryPreference;
+  double get budget => _budget;
 
   bool get isFirstTime {
     return sharedPrefs.getBool(AppConstants.isFirstTimeKey) ?? true;
@@ -28,11 +32,9 @@ class AppState extends ChangeNotifier {
     return sharedPrefs.getBool(AppConstants.isLoggedInKey) ?? false;
   }
 
-  int _currentTabIndex = 0; // Default to Home tab index
+  int _currentTabIndex = 0;
 
-  int get currentTabIndex {
-    return _currentTabIndex;
-  }
+  int get currentTabIndex => _currentTabIndex;
 
   void changeTheme(ThemeData theme) {
     _theme = theme;
@@ -49,8 +51,14 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Full logout — clears Supabase flag + resets all in-memory state so the
+  /// next user who logs in starts with a clean slate.
   void logout() {
     sharedPrefs.setBool(AppConstants.isLoggedInKey, false);
+    _dietaryPreference = 'None';
+    _currency = AppCurrency.supported.first;
+    _budget = 400.0;
+    _currentTabIndex = 0;
     notifyListeners();
   }
 
@@ -66,6 +74,13 @@ class AppState extends ChangeNotifier {
 
   void setDietaryPreference(String preference) {
     _dietaryPreference = preference;
+    notifyListeners();
+  }
+
+  /// Update budget globally so both Profile and GroceryList stay in sync
+  /// without either screen needing to reload from the database.
+  void setBudget(double value) {
+    _budget = value;
     notifyListeners();
   }
 }

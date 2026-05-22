@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import '../globals/app_state.dart';
 import '../models/grocery_item.dart';
 import '../widgets/grocery_item_tile.dart';
 import '../widgets/progress_card.dart';
@@ -27,11 +29,13 @@ class _GroceryListScreenState extends State<GroceryListScreen>
   bool _isEditMode = false;
   bool _isLoading = true;
 
-  /// Budget fetched from user_profiles (default 400 until loaded)
-  double _budget = 400.00;
-
   /// All items from Supabase, rebuilt into categories locally
   List<Map<String, dynamic>> _rawItems = [];
+
+  // Budget is now owned by AppState so it stays in sync with Profile.
+  // We load it once here on init (and on refresh) so the List screen
+  // always reflects whatever the user has saved, even if they haven't
+  // visited the Profile tab yet.
 
   // ── Computed categories from raw items ───────────────────────────────────
 
@@ -66,7 +70,26 @@ class _GroceryListScreenState extends State<GroceryListScreen>
   @override
   void initState() {
     super.initState();
+    _loadBudget();
     _loadItems();
+  }
+
+  /// Fetches the user's budget from user_profiles and pushes it into AppState
+  /// so both GroceryListScreen and ProfileScreen always show the same value.
+  Future<void> _loadBudget() async {
+    final userId = Supabase.instance.client.auth.currentUser?.id;
+    if (userId == null) return;
+    try {
+      final row = await Supabase.instance.client
+          .from('user_profiles')
+          .select('budget')
+          .eq('id', userId)
+          .maybeSingle();
+      if (row != null && mounted) {
+        final budget = (row['budget'] as num?)?.toDouble() ?? 400.0;
+        AppState.of(context, listen: false).setBudget(budget);
+      }
+    } catch (_) {}
   }
 
   Future<void> _loadItems() async {
@@ -140,13 +163,23 @@ class _GroceryListScreenState extends State<GroceryListScreen>
   }
 
   Future<void> _addItem(
-      String name, String quantity, double price, String category) async {
+      String name,
+      String quantity,
+      double? quantityAmount,
+      String? unit,
+      double price,
+      String category,
+      List<String> dietaryTags,
+      ) async {
     try {
       final newItem = await GroceryService.addItem(
         name: name,
         quantity: quantity,
+        quantityAmount: quantityAmount,
+        unit: unit,
         price: price,
         category: category,
+        dietaryTags: dietaryTags,
       );
       if (mounted) setState(() => _rawItems.add(newItem));
     } catch (e) {
@@ -372,6 +405,7 @@ class _GroceryListScreenState extends State<GroceryListScreen>
   // ── Share ─────────────────────────────────────────────────────────────────
 
   void _shareList() {
+    final budget = AppState.of(context, listen: false).budget;
     final buf = StringBuffer();
     buf.writeln('🛒 Grocery List');
     buf.writeln('$_remainingCount item(s) remaining\n');
@@ -389,7 +423,7 @@ class _GroceryListScreenState extends State<GroceryListScreen>
     _allItems.fold(0.0, (s, i) => s + i.price).toStringAsFixed(2);
     buf.writeln('Total: $_sym$grand');
     buf.writeln(
-        'Spent: $_sym${_spentTotal.toStringAsFixed(2)} / Budget: $_sym${_budget.toStringAsFixed(2)}');
+        'Spent: $_sym${_spentTotal.toStringAsFixed(2)} / Budget: $_sym${budget.toStringAsFixed(2)}');
 
     Clipboard.setData(ClipboardData(text: buf.toString()));
     ScaffoldMessenger.of(context).showSnackBar(
@@ -444,7 +478,7 @@ class _GroceryListScreenState extends State<GroceryListScreen>
                     checkedCount: _checkedCount,
                     totalCount: _totalCount,
                     spentTotal: _spentTotal,
-                    budget: _budget,
+                    budget: AppState.of(context).budget,
                     currencySymbol: _sym,
                   ),
                   const SizedBox(height: 16),

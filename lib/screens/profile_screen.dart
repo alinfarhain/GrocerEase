@@ -10,6 +10,7 @@
 import 'package:flutter/material.dart';
 import '../models/grocery_item.dart';
 import '../globals/app_state.dart';
+import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 // ═══════════════════════════════════════════════════════════
@@ -97,30 +98,34 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   @override
   void initState() {
-      super.initState();
-      _loadBudget();
-    }
+    super.initState();
+    _loadBudget();
+  }
 
-    Future<void> _loadBudget() async {
-      final userId = Supabase.instance.client.auth.currentUser?.id;
-      if (userId == null) return;
-      try {
-        final row = await Supabase.instance.client
-            .from('user_profiles')
-            .select('budget, dietary_preference')
-            .eq('id', userId)
-            .maybeSingle();
-        if (row != null && mounted) {
-          setState(() {
-            _budget = (row['budget'] as num?)?.toDouble() ?? 400.0;
-          });
-          final pref = row['dietary_preference'] as String?;
-          if (pref != null && pref.isNotEmpty) {
-            widget.onDietaryChanged(pref);
-          }
+  Future<void> _loadBudget() async {
+    final userId = Supabase.instance.client.auth.currentUser?.id;
+    if (userId == null) return;
+    try {
+      final row = await Supabase.instance.client
+          .from('user_profiles')
+          .select('budget, dietary_preference')
+          .eq('id', userId)
+          .maybeSingle();
+      if (row != null && mounted) {
+        final budget = (row['budget'] as num?)?.toDouble() ?? 400.0;
+        setState(() {
+          _budget = budget;
+        });
+        // Push budget into AppState so GroceryListScreen reacts immediately.
+        AppState.of(context, listen: false).setBudget(budget);
+
+        final pref = row['dietary_preference'] as String?;
+        if (pref != null && pref.isNotEmpty) {
+          widget.onDietaryChanged(pref);
         }
-      } catch (_) {}
-    }
+      }
+    } catch (_) {}
+  }
 
   void _editBudget() {
     final appState = AppState.of(context, listen: false);
@@ -155,6 +160,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
             onPressed: () {
               final newBudget = double.tryParse(ctrl.text) ?? _budget;
               setState(() => _budget = newBudget);
+              // Sync to AppState so GroceryListScreen reflects it immediately.
+              AppState.of(context, listen: false).setBudget(newBudget);
               Navigator.pop(ctx);
 // Persist to Supabase
               final userId = Supabase.instance.client.auth.currentUser?.id;
@@ -218,6 +225,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   : null,
               onTap: () {
                 widget.onDietaryChanged(o);
+                _saveDietaryPreference(o);
                 Navigator.pop(ctx);
               },
             )),
@@ -225,6 +233,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ),
       ),
     );
+  }
+
+  // ── Dietary preference → Supabase ────────────────────────────────────────
+  // Previously missing — preference was set in AppState (in-memory only) but
+  // never written to the DB, so it reset on every app restart.
+  Future<void> _saveDietaryPreference(String pref) async {
+    final userId = Supabase.instance.client.auth.currentUser?.id;
+    if (userId == null) return;
+    Supabase.instance.client
+        .from('user_profiles')
+        .update({'dietary_preference': pref})
+        .eq('id', userId)
+        .catchError((_) {});
   }
 
   // ── Help dialog ───────────────────────────────────────────────────────
@@ -301,7 +322,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
               onPressed: () => Navigator.pop(ctx),
               child: const Text('Cancel')),
           ElevatedButton(
-            onPressed: () => Navigator.pop(ctx), // hook up real logout
+            // BEFORE: onPressed: () => Navigator.pop(ctx),  ← only closed dialog!
+            // AFTER:  Properly signs out from Supabase, clears AppState,
+            //         and navigates to /login.
+            onPressed: () async {
+              Navigator.pop(ctx);
+              try {
+                await Supabase.instance.client.auth.signOut();
+              } catch (_) {}
+              if (context.mounted) {
+                AppState.of(context, listen: false).logout();
+                context.go('/login');
+              }
+            },
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.red,
               foregroundColor: Colors.white,
