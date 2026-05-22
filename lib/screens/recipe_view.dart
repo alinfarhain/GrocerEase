@@ -95,56 +95,275 @@ class _RecipeViewState extends State<RecipeView> {
     return total > 0 ? '${total}m' : '${cook}m';
   }
 
-  // ── GROCERY LIST HELPERS ──────────────────────────────────────────────────
+// ── GROCERY LIST HELPERS ──────────────────────────────────────────────────
 
   /// Infers a grocery category from an ingredient name using keyword matching.
   String _inferCategory(String name) {
     final n = name.toLowerCase();
-    if (RegExp(r'cheese|milk|butter|cream|egg|yogurt|cheddar|mozzarella|dairy').hasMatch(n)) {
-      return 'Dairy & Eggs';
-    }
-    if (RegExp(r'chicken|beef|pork|lamb|turkey|duck|bacon|sausage|ham|steak|mince|meat|veal').hasMatch(n)) {
-      return 'Meat & Poultry';
-    }
-    if (RegExp(r'fish|salmon|tuna|shrimp|prawn|crab|lobster|cod|tilapia|seafood|squid').hasMatch(n)) {
-      return 'Seafood';
-    }
-    if (RegExp(r'corn|pepper|tomato|onion|garlic|carrot|spinach|lettuce|avocado|potato|capsicum|bean|zucchini|broccoli|mushroom|celery|cucumber|kale|cabbage|pea|leek|chilli|chili').hasMatch(n)) {
-      return 'Vegetables & Produce';
-    }
-    if (RegExp(r'apple|banana|lemon|lime|orange|mango|strawberry|berry|grape|peach|pear|fruit').hasMatch(n)) {
-      return 'Fruits';
-    }
-    if (RegExp(r'quinoa|rice|flour|pasta|bread|oat|noodle|tortilla|wheat|grain|cereal|barley|couscous').hasMatch(n)) {
-      return 'Grains & Pasta';
-    }
-    if (RegExp(r'sauce|enchilada|salsa|verde|broth|stock|paste|canned|soup|dressing').hasMatch(n)) {
-      return 'Canned & Jarred';
-    }
-    if (RegExp(r'salt|cumin|cilantro|basil|oregano|paprika|thyme|rosemary|coriander|spice|herb|seasoning|cardamom|turmeric|cinnamon|nutmeg|pepper').hasMatch(n)) {
-      return 'Herbs & Spices';
-    }
-    if (RegExp(r'oil|olive oil|vinegar|soy sauce|mustard|mayo|mayonnaise|ketchup|syrup|honey').hasMatch(n)) {
-      return 'Oils & Condiments';
-    }
+    if (RegExp(r'cheese|milk|butter|cream|egg|yogurt|cheddar|mozzarella|dairy')
+        .hasMatch(n)) return 'Dairy & Eggs';
+    if (RegExp(
+        r'chicken|beef|pork|lamb|turkey|duck|bacon|sausage|ham|steak|mince|meat|veal')
+        .hasMatch(n)) return 'Meat & Poultry';
+    if (RegExp(r'fish|salmon|tuna|shrimp|prawn|crab|lobster|cod|tilapia|seafood|squid')
+        .hasMatch(n)) return 'Seafood';
+    if (RegExp(
+        r'corn|pepper|tomato|onion|garlic|carrot|spinach|lettuce|avocado|potato|capsicum|bean|zucchini|broccoli|mushroom|celery|cucumber|kale|cabbage|pea|leek|chilli|chili')
+        .hasMatch(n)) return 'Vegetables & Produce';
+    if (RegExp(
+        r'apple|banana|lemon|lime|orange|mango|strawberry|berry|grape|peach|pear|fruit')
+        .hasMatch(n)) return 'Fruits';
+    if (RegExp(
+        r'quinoa|rice|flour|pasta|bread|oat|noodle|tortilla|wheat|grain|cereal|barley|couscous')
+        .hasMatch(n)) return 'Grains & Pasta';
+    if (RegExp(r'sauce|enchilada|salsa|verde|broth|stock|paste|canned|soup|dressing')
+        .hasMatch(n)) return 'Canned & Jarred';
+    if (RegExp(
+        r'salt|cumin|cilantro|basil|oregano|paprika|thyme|rosemary|coriander|spice|herb|seasoning|cardamom|turmeric|cinnamon|nutmeg|pepper')
+        .hasMatch(n)) return 'Herbs & Spices';
+    if (RegExp(
+        r'oil|olive oil|vinegar|soy sauce|mustard|mayo|mayonnaise|ketchup|syrup|honey')
+        .hasMatch(n)) return 'Oils & Condiments';
     return 'Other';
   }
 
-  /// Adds all recipe ingredients to the grocery list via GroceryService.
-  Future<void> _addIngredientsToGroceryList() async {
-    final ingredients = _currentRecipe['ingredients'] as List<dynamic>? ?? [];
-    if (ingredients.isEmpty) return;
+  // ── STEP 1: show the selection sheet ─────────────────────────────────────
+
+  /// Opens a bottom sheet so the user can pick which ingredients to add.
+  void _showIngredientSelectionSheet() {
+    final allIngredients =
+        _currentRecipe['ingredients'] as List<dynamic>? ?? [];
+    if (allIngredients.isEmpty) return;
+
+    // All ingredients are checked by default.
+    final selected = List<bool>.filled(allIngredients.length, true);
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setSheetState) {
+            final checkedCount = selected.where((v) => v).length;
+            final allChecked = checkedCount == allIngredients.length;
+
+            return Container(
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+              ),
+              padding: EdgeInsets.only(
+                bottom: MediaQuery.of(ctx).viewInsets.bottom,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Drag handle
+                  Container(
+                    margin: const EdgeInsets.only(top: 12, bottom: 4),
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade300,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+
+                  // Header row
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 12, 8, 0),
+                    child: Row(
+                      children: [
+                        const Expanded(
+                          child: Text(
+                            'Choose Ingredients',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF003D33),
+                            ),
+                          ),
+                        ),
+                        TextButton(
+                          onPressed: () => setSheetState(() {
+                            final next = !allChecked;
+                            for (int i = 0; i < selected.length; i++) {
+                              selected[i] = next;
+                            }
+                          }),
+                          child: Text(
+                            allChecked ? 'Deselect All' : 'Select All',
+                            style: const TextStyle(
+                              color: Color(0xFF1BAB52),
+                              fontWeight: FontWeight.w600,
+                              fontSize: 14,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  // Counter subtitle
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 10),
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        '$checkedCount of ${allIngredients.length} selected',
+                        style: TextStyle(
+                          color: Colors.grey.shade500,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ),
+                  ),
+
+                  const Divider(height: 1),
+
+                  // Ingredient checkboxes
+                  ConstrainedBox(
+                    constraints: BoxConstraints(
+                      maxHeight: MediaQuery.of(ctx).size.height * 0.45,
+                    ),
+                    child: ListView.separated(
+                      shrinkWrap: true,
+                      padding: const EdgeInsets.symmetric(vertical: 4),
+                      itemCount: allIngredients.length,
+                      separatorBuilder: (_, __) =>
+                      const Divider(height: 1, indent: 56, endIndent: 16),
+                      itemBuilder: (_, i) {
+                        final ing = allIngredients[i];
+                        String name = '';
+                        String qty = '';
+                        if (ing is Map) {
+                          name = ing['name']?.toString() ?? '';
+                          final amount = ing['amount']?.toString() ?? '';
+                          final unit = ing['unit']?.toString() ?? '';
+                          qty = [amount, unit]
+                              .where((s) => s.isNotEmpty)
+                              .join(' ');
+                        } else {
+                          name = ing.toString();
+                        }
+
+                        return CheckboxListTile(
+                          value: selected[i],
+                          onChanged: (v) =>
+                              setSheetState(() => selected[i] = v ?? false),
+                          activeColor: const Color(0xFF1BAB52),
+                          checkColor: Colors.white,
+                          controlAffinity: ListTileControlAffinity.leading,
+                          contentPadding:
+                          const EdgeInsets.symmetric(horizontal: 16),
+                          dense: true,
+                          title: Text(
+                            name,
+                            style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w500,
+                              color: selected[i]
+                                  ? const Color(0xFF003D33)
+                                  : Colors.grey.shade400,
+                            ),
+                          ),
+                          subtitle: qty.isNotEmpty
+                              ? Text(
+                            qty,
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: selected[i]
+                                  ? Colors.grey.shade500
+                                  : Colors.grey.shade300,
+                            ),
+                          )
+                              : null,
+                        );
+                      },
+                    ),
+                  ),
+
+                  const Divider(height: 1),
+
+                  // Add button
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
+                    child: SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        onPressed: checkedCount == 0
+                            ? null
+                            : () {
+                          Navigator.pop(ctx);
+                          final chosen = <dynamic>[];
+                          for (int i = 0;
+                          i < allIngredients.length;
+                          i++) {
+                            if (selected[i]) {
+                              chosen.add(allIngredients[i]);
+                            }
+                          }
+                          _addIngredientsToGroceryList(chosen);
+                        },
+                        icon: const Icon(Icons.add_shopping_cart_outlined,
+                            size: 20),
+                        label: Text(
+                          checkedCount == 0
+                              ? 'Select at least one ingredient'
+                              : 'Add $checkedCount Ingredient${checkedCount == 1 ? '' : 's'} to List',
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF1BAB52),
+                          foregroundColor: Colors.white,
+                          disabledBackgroundColor: const Color(0xFF1BAB52)
+                              .withValues(alpha: 0.35),
+                          disabledForegroundColor: Colors.white60,
+                          padding:
+                          const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          elevation: 0,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  // ── STEP 2: add only the chosen ingredients ───────────────────────────────
+
+  /// Adds [selectedIngredients] to the grocery list via GroceryService.
+  Future<void> _addIngredientsToGroceryList(
+      List<dynamic> selectedIngredients) async {
+    if (selectedIngredients.isEmpty) return;
+
+    // Use the FULL list length for budget distribution so the price per
+    // ingredient stays consistent regardless of how many are selected.
+    final allIngredients =
+        _currentRecipe['ingredients'] as List<dynamic>? ?? [];
 
     setState(() => _isAddingToList = true);
 
-    // Split total recipe budget (already in MYR) evenly across ingredients.
-    final budgetStr = (_currentRecipe['budget'] ?? _currentRecipe['price'] ?? '0')
+    final budgetStr =
+    (_currentRecipe['budget'] ?? _currentRecipe['price'] ?? '0')
         .toString()
         .replaceAll('RM', '')
         .trim();
     final totalBudget = double.tryParse(budgetStr) ?? 0.0;
-    final pricePerIngredient = (totalBudget > 0 && ingredients.isNotEmpty)
-        ? totalBudget / ingredients.length
+    final pricePerIngredient = (totalBudget > 0 && allIngredients.isNotEmpty)
+        ? totalBudget / allIngredients.length
         : 0.0;
 
     final recipeName = _currentRecipe['name'] as String? ?? 'Unknown Recipe';
@@ -152,7 +371,7 @@ class _RecipeViewState extends State<RecipeView> {
     int added = 0;
     int skipped = 0;
 
-    for (final ing in ingredients) {
+    for (final ing in selectedIngredients) {
       if (ing is! Map) continue;
       final name = ing['name']?.toString().trim() ?? '';
       if (name.isEmpty) continue;
@@ -160,7 +379,8 @@ class _RecipeViewState extends State<RecipeView> {
       final amountStr = ing['amount']?.toString().trim() ?? '';
       final unit = ing['unit']?.toString().trim() ?? '';
       final quantityAmount = double.tryParse(amountStr);
-      final quantity = [amountStr, unit].where((s) => s.isNotEmpty).join(' ');
+      final quantity =
+      [amountStr, unit].where((s) => s.isNotEmpty).join(' ');
       final category = _inferCategory(name);
 
       try {
@@ -171,7 +391,7 @@ class _RecipeViewState extends State<RecipeView> {
           unit: unit.isNotEmpty ? unit : null,
           price: double.parse(pricePerIngredient.toStringAsFixed(2)),
           category: category,
-          recipe: recipeName, // ← links item to the "By Recipe" tab
+          recipe: recipeName,
         );
         added++;
       } catch (_) {
@@ -189,9 +409,11 @@ class _RecipeViewState extends State<RecipeView> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(msg),
-        backgroundColor: skipped == 0 ? const Color(0xFF2E7D32) : Colors.orange,
+        backgroundColor:
+        skipped == 0 ? const Color(0xFF2E7D32) : Colors.orange,
         behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        shape:
+        RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         margin: const EdgeInsets.all(16),
         duration: const Duration(seconds: 3),
       ),
@@ -747,7 +969,7 @@ class _RecipeViewState extends State<RecipeView> {
                       child: ElevatedButton.icon(
                         onPressed: (_isAddingToList || ingredients.isEmpty)
                             ? null
-                            : _addIngredientsToGroceryList,
+                            : _showIngredientSelectionSheet,
                         icon: _isAddingToList
                             ? const SizedBox(
                           width: 18,
