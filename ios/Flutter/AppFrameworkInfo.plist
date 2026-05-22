@@ -22,5 +22,9 @@
   <string>1.0</string>
   <key>MinimumOSVersion</key>
   <string>13.0</string>
+  <key>NSCameraUsageDescription</key>
+  <string>We need camera access to scan meals and ingredients</string>
+  <key>NSPhotoLibraryUsageDescription</key>
+  <string>We need photo library access to upload meal images</string>
 </dict>
 </plist>

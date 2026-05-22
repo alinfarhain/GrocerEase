@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
 class ScanPagePopup extends StatelessWidget {
   const ScanPagePopup({super.key});
@@ -64,7 +65,10 @@ class ScanPagePopup extends StatelessWidget {
             'Get recipe recommendations by scanning a meal or ingredients',
             iconBgColor: const Color(0xFFE8F5E9),
             iconColor: const Color(0xFF1BAB52),
-            onTap: () => Navigator.pop(context),
+            onTap: () {
+              Navigator.pop(context);       // close the bottom sheet first
+              context.push('/scan-meal');   // then open the camera screen
+            },
           ),
           const SizedBox(height: 16.0),
           _buildScanOption(

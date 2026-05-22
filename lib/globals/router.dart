@@ -10,6 +10,8 @@ import '../screens/search_recipes.dart';
 import '../screens/scan_page.dart';
 import '../screens/navigate_page.dart';
 import '../screens/my_recipes.dart';
+import '../screens/scan_meal_screen.dart';    // ← ADD THIS
+import '../screens/scan_results_screen.dart';
 
 final GoRouter appRouter = GoRouter(
   initialLocation: '/launch',
@@ -76,6 +78,24 @@ final GoRouter appRouter = GoRouter(
       name: 'scan-page',
       builder: (context, state) => const ScanPage(),
     ),
+
+    GoRoute(
+      path: '/scan-meal',
+      name: 'scan-meal',
+      builder: (context, state) => const ScanMealScreen(),
+    ),
+    GoRoute(
+      path: '/scan-results',
+      name: 'scan-results',
+      builder: (context, state) {
+        final dynamic extraValue = state.extra;
+        final Map<String, dynamic> result = (extraValue is Map)
+            ? Map<String, dynamic>.from(extraValue)
+            : <String, dynamic>{};
+        return ScanResultsScreen(result: result);
+      },
+    ),
+
     GoRoute(
       path: '/my-recipes',
       name: 'my-recipes',

@@ -19,8 +19,6 @@ void main() async {
     anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNnb3NkZnp2d2hlbGZleGRvdnJ5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc4OTU4OTgsImV4cCI6MjA5MzQ3MTg5OH0.FXcbpyTn4KqalmYe-00ibCHBYM1l5A6zZIvvWudSTsc',                      // ← replace
   );
 
-
-  
   // Initialize SharedPreferences
   sharedPrefs = await SharedPreferences.getInstance();
 

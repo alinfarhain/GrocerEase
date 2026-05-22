@@ -1,0 +1,7 @@
+{
+  "dependencies": {
+    "react-native-image-base64": "^0.1.4",
+    "react-native-image-picker": "^8.2.1",
+    "react-native-vision-camera": "^5.0.10"
+  }
+}
