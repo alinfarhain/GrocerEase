@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import '../services/recipe_save_service.dart';
 
 class ScanResultsScreen extends StatefulWidget {
   final Map<String, dynamic> result;
@@ -11,11 +12,84 @@ class ScanResultsScreen extends StatefulWidget {
 
 class _ScanResultsScreenState extends State<ScanResultsScreen> {
   Map<String, dynamic>? _selectedRecipe;
+  bool _isSaving = false;
+  bool _savedSuccess = false;
 
   static const Color _green = Color(0xFF2E7D32);
   static const Color _lightGreen = Color(0xFFE8F5E9);
 
   bool get _isMeal => widget.result['type'] == 'meal';
+
+  // ── SAVE MEAL (Add to Saved Recipes on meal page) ─────────
+  Future<void> _saveMealRecipe() async {
+    setState(() => _isSaving = true);
+    try {
+      await RecipeSaveService.saveMealRecipe(widget.result);
+      setState(() => _savedSuccess = true);
+      _showSuccess('Recipe saved successfully!');
+    } catch (e) {
+      _showError('Failed to save: $e');
+    } finally {
+      setState(() => _isSaving = false);
+    }
+  }
+
+  // ── SAVE FROM BOTTOM SHEET (Save Recipe button) ───────────
+  Future<void> _saveSelectedRecipe(Map<String, dynamic> recipe) async {
+    setState(() => _isSaving = true);
+    try {
+      await RecipeSaveService.saveRecipeSuggestion(
+        recipe: recipe,
+        overrideName: _isMeal ? widget.result['name'] : null,
+      );
+      setState(() {
+        _selectedRecipe = null;
+        _savedSuccess = true;
+      });
+      _showSuccess('Recipe saved successfully!');
+    } catch (e) {
+      _showError('Failed to save: $e');
+    } finally {
+      setState(() => _isSaving = false);
+    }
+  }
+
+  // ── SAVE FIRST SUGGESTION (Add to Saved Recipes on ingredients page) ──
+  Future<void> _saveFirstSuggestion(List<dynamic> suggestions) async {
+    setState(() => _isSaving = true);
+    try {
+      final first = suggestions.first as Map<String, dynamic>;
+      await RecipeSaveService.saveRecipeSuggestion(recipe: first);
+      setState(() => _savedSuccess = true);
+      _showSuccess('Recipe saved successfully!');
+    } catch (e) {
+      _showError('Failed to save: $e');
+    } finally {
+      setState(() => _isSaving = false);
+    }
+  }
+
+  void _showSuccess(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: _green,
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  void _showError(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Colors.red,
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -24,10 +98,11 @@ class _ScanResultsScreenState extends State<ScanResultsScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            // ── HEADER ──────────────────────────────
+            // ── HEADER ──────────────────────────────────────
             Padding(
               padding: const EdgeInsets.symmetric(
-                horizontal: 20, vertical: 16,
+                horizontal: 20,
+                vertical: 16,
               ),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -42,35 +117,45 @@ class _ScanResultsScreenState extends State<ScanResultsScreen> {
                   ),
                   GestureDetector(
                     onTap: () => context.pop(),
-                    child: const Icon(Icons.close, size: 22, color: Colors.black54),
+                    child: const Icon(
+                      Icons.close,
+                      size: 22,
+                      color: Colors.black54,
+                    ),
                   ),
                 ],
               ),
             ),
             const Divider(height: 1),
 
-            // ── CONTENT ─────────────────────────────
+            // ── SCROLLABLE CONTENT ───────────────────────────
             Expanded(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.all(16),
-                child: _isMeal ? _buildMealResult() : _buildIngredientsResult(),
+                child: _isMeal
+                    ? _buildMealResult()
+                    : _buildIngredientsResult(),
               ),
             ),
           ],
         ),
       ),
 
-      // ── RECIPE DETAIL BOTTOM SHEET ───────────────
+      // ── RECIPE DETAIL BOTTOM SHEET ───────────────────────
       bottomSheet: _selectedRecipe != null
           ? _RecipeDetailSheet(
         recipe: _selectedRecipe!,
+        isSaving: _isSaving,
         onClose: () => setState(() => _selectedRecipe = null),
+        onSave: () => _saveSelectedRecipe(_selectedRecipe!),
       )
           : null,
     );
   }
 
-  // ── MEAL RESULT UI ───────────────────────────────
+  // ────────────────────────────────────────────────────────
+  // MEAL RESULT
+  // ────────────────────────────────────────────────────────
   Widget _buildMealResult() {
     final recipe = widget.result['recipe'] as Map<String, dynamic>? ?? {};
 
@@ -78,7 +163,7 @@ class _ScanResultsScreenState extends State<ScanResultsScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         // Success banner
-        _SuccessBanner(),
+        const _SuccessBanner(),
         const SizedBox(height: 20),
 
         // Label
@@ -117,7 +202,10 @@ class _ScanResultsScreenState extends State<ScanResultsScreen> {
                 ),
               ),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 4,
+                ),
                 decoration: BoxDecoration(
                   color: _lightGreen,
                   borderRadius: BorderRadius.circular(20),
@@ -159,7 +247,10 @@ class _ScanResultsScreenState extends State<ScanResultsScreen> {
               SizedBox(
                 width: double.infinity,
                 child: OutlinedButton(
-                  onPressed: () => setState(() => _selectedRecipe = recipe),
+                  onPressed: () => setState(() => _selectedRecipe = {
+                    ...recipe,
+                    'name': widget.result['name'],
+                  }),
                   style: OutlinedButton.styleFrom(
                     foregroundColor: _green,
                     side: const BorderSide(color: _green),
@@ -179,26 +270,40 @@ class _ScanResultsScreenState extends State<ScanResultsScreen> {
         ),
         const SizedBox(height: 24),
 
-        // Action buttons
+        // Add to Saved Recipes button
         SizedBox(
           width: double.infinity,
           child: ElevatedButton(
-            onPressed: () {},
+            onPressed: _isSaving || _savedSuccess ? null : _saveMealRecipe,
             style: ElevatedButton.styleFrom(
-              backgroundColor: _green,
+              backgroundColor: _savedSuccess ? Colors.grey.shade400 : _green,
               foregroundColor: Colors.white,
               padding: const EdgeInsets.symmetric(vertical: 16),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
               ),
             ),
-            child: const Text(
-              'Add to Saved Recipes',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+            child: _isSaving
+                ? const SizedBox(
+              height: 20,
+              width: 20,
+              child: CircularProgressIndicator(
+                color: Colors.white,
+                strokeWidth: 2,
+              ),
+            )
+                : Text(
+              _savedSuccess ? 'Saved ✓' : 'Add to Saved Recipes',
+              style: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+              ),
             ),
           ),
         ),
         const SizedBox(height: 12),
+
+        // Scan Again button
         SizedBox(
           width: double.infinity,
           child: ElevatedButton(
@@ -222,18 +327,23 @@ class _ScanResultsScreenState extends State<ScanResultsScreen> {
     );
   }
 
-  // ── INGREDIENTS RESULT UI ────────────────────────
+  // ────────────────────────────────────────────────────────
+  // INGREDIENTS RESULT
+  // ────────────────────────────────────────────────────────
   Widget _buildIngredientsResult() {
-    final ingredients = (widget.result['ingredients'] as List<dynamic>?) ?? [];
+    final ingredients =
+        (widget.result['ingredients'] as List<dynamic>?) ?? [];
     final suggestions =
         (widget.result['recipeSuggestions'] as List<dynamic>?) ?? [];
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _SuccessBanner(),
+        // Success banner
+        const _SuccessBanner(),
         const SizedBox(height: 20),
 
+        // Detected ingredients label
         const Text(
           'Detected Ingredients',
           style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
@@ -280,7 +390,8 @@ class _ScanResultsScreenState extends State<ScanResultsScreen> {
               style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
             ),
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              padding:
+              const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
               decoration: BoxDecoration(
                 color: _lightGreen,
                 borderRadius: BorderRadius.circular(20),
@@ -363,13 +474,75 @@ class _ScanResultsScreenState extends State<ScanResultsScreen> {
             ),
           );
         }),
+
+        const SizedBox(height: 24),
+
+        // Add to Saved Recipes button (saves top suggestion)
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton(
+            onPressed: _isSaving || _savedSuccess || suggestions.isEmpty
+                ? null
+                : () => _saveFirstSuggestion(suggestions),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: _savedSuccess ? Colors.grey.shade400 : _green,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+            child: _isSaving
+                ? const SizedBox(
+              height: 20,
+              width: 20,
+              child: CircularProgressIndicator(
+                color: Colors.white,
+                strokeWidth: 2,
+              ),
+            )
+                : Text(
+              _savedSuccess ? 'Saved ✓' : 'Add to Saved Recipes',
+              style: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+
+        // Scan Again button
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton(
+            onPressed: () => context.pop(),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: _lightGreen,
+              foregroundColor: _green,
+              elevation: 0,
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+            child: const Text(
+              'Scan Again',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+            ),
+          ),
+        ),
       ],
     );
   }
 }
 
-// ── SUCCESS BANNER ───────────────────────────────────
+// ────────────────────────────────────────────────────────────
+// SUCCESS BANNER WIDGET
+// ────────────────────────────────────────────────────────────
 class _SuccessBanner extends StatelessWidget {
+  const _SuccessBanner();
+
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -394,12 +567,21 @@ class _SuccessBanner extends StatelessWidget {
   }
 }
 
-// ── RECIPE DETAIL BOTTOM SHEET ───────────────────────
+// ────────────────────────────────────────────────────────────
+// RECIPE DETAIL BOTTOM SHEET
+// ────────────────────────────────────────────────────────────
 class _RecipeDetailSheet extends StatelessWidget {
   final Map<String, dynamic> recipe;
+  final bool isSaving;
   final VoidCallback onClose;
+  final VoidCallback onSave;
 
-  const _RecipeDetailSheet({required this.recipe, required this.onClose});
+  const _RecipeDetailSheet({
+    required this.recipe,
+    required this.isSaving,
+    required this.onClose,
+    required this.onSave,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -415,12 +597,25 @@ class _RecipeDetailSheet extends StatelessWidget {
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
         boxShadow: [BoxShadow(blurRadius: 20, color: Colors.black26)],
       ),
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.fromLTRB(20, 20, 20, 32),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Header
+          // Sheet handle
+          Center(
+            child: Container(
+              width: 40,
+              height: 4,
+              margin: const EdgeInsets.only(bottom: 16),
+              decoration: BoxDecoration(
+                color: Colors.grey.shade300,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ),
+
+          // Header row
           Row(
             children: [
               Expanded(
@@ -438,14 +633,63 @@ class _RecipeDetailSheet extends StatelessWidget {
               ),
             ],
           ),
+
+          // Meta chips row (prep time, cook time, servings,
+          // difficulty, calories)
+          if (_hasMetaData()) ...[
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 6,
+              children: [
+                if (recipe['prepTime'] != null)
+                  _metaChip('Prep: ${recipe['prepTime']}'),
+                if (recipe['cookTime'] != null)
+                  _metaChip('Cook: ${recipe['cookTime']}'),
+                if (recipe['servings'] != null)
+                  _metaChip('Serves: ${recipe['servings']}'),
+                if (recipe['difficultyLevel'] != null)
+                  _metaChip(recipe['difficultyLevel'].toString()),
+                if (recipe['caloriesPerServing'] != null)
+                  _metaChip(
+                    '${recipe['caloriesPerServing']} cal/serving',
+                  ),
+              ],
+            ),
+          ],
+
           const SizedBox(height: 16),
 
-          // Scrollable content
+          // Scrollable ingredients + steps
           Flexible(
             child: SingleChildScrollView(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  // Tools required
+                  if ((recipe['toolsRequired'] as List<dynamic>?)
+                      ?.isNotEmpty ==
+                      true) ...[
+                    const Text(
+                      'Tools Required',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF333333),
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 4,
+                      children: (recipe['toolsRequired'] as List<dynamic>)
+                          .map((t) => _toolChip(t.toString()))
+                          .toList(),
+                    ),
+                    const SizedBox(height: 14),
+                  ],
+
+                  // Ingredients
                   const Text(
                     'Ingredients',
                     style: TextStyle(
@@ -455,17 +699,37 @@ class _RecipeDetailSheet extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 8),
-                  ...ingredients.map((item) => Padding(
-                    padding: const EdgeInsets.only(bottom: 4),
-                    child: Text(
-                      '• $item',
-                      style: const TextStyle(
-                        fontSize: 14,
-                        color: Color(0xFF444444),
+                  ...ingredients.map(
+                        (item) => Padding(
+                      padding: const EdgeInsets.only(bottom: 5),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            '• ',
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: Color(0xFF2E7D32),
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          Expanded(
+                            child: Text(
+                              item.toString(),
+                              style: const TextStyle(
+                                fontSize: 14,
+                                color: Color(0xFF444444),
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                  )),
+                  ),
+
                   const SizedBox(height: 16),
+
+                  // Steps
                   const Text(
                     'Steps',
                     style: TextStyle(
@@ -475,28 +739,59 @@ class _RecipeDetailSheet extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 8),
-                  ...steps.asMap().entries.map((e) => Padding(
-                    padding: const EdgeInsets.only(bottom: 10),
-                    child: Text(
-                      '${e.key + 1}. ${e.value}',
-                      style: const TextStyle(
-                        fontSize: 14,
-                        color: Color(0xFF444444),
-                        height: 1.5,
+                  ...steps.asMap().entries.map(
+                        (e) => Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Container(
+                            width: 24,
+                            height: 24,
+                            margin: const EdgeInsets.only(right: 10, top: 1),
+                            decoration: const BoxDecoration(
+                              color: Color(0xFFE8F5E9),
+                              shape: BoxShape.circle,
+                            ),
+                            child: Center(
+                              child: Text(
+                                '${e.key + 1}',
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w700,
+                                  color: Color(0xFF2E7D32),
+                                ),
+                              ),
+                            ),
+                          ),
+                          Expanded(
+                            child: Text(
+                              e.value.toString(),
+                              style: const TextStyle(
+                                fontSize: 14,
+                                color: Color(0xFF444444),
+                                height: 1.5,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                  )),
+                  ),
+
+                  const SizedBox(height: 8),
                 ],
               ),
             ),
           ),
+
           const SizedBox(height: 16),
 
-          // Save button
+          // Save Recipe button
           SizedBox(
             width: double.infinity,
             child: ElevatedButton(
-              onPressed: onClose,
+              onPressed: isSaving ? null : onSave,
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFF2E7D32),
                 foregroundColor: Colors.white,
@@ -505,13 +800,68 @@ class _RecipeDetailSheet extends StatelessWidget {
                   borderRadius: BorderRadius.circular(12),
                 ),
               ),
-              child: const Text(
+              child: isSaving
+                  ? const SizedBox(
+                height: 20,
+                width: 20,
+                child: CircularProgressIndicator(
+                  color: Colors.white,
+                  strokeWidth: 2,
+                ),
+              )
+                  : const Text(
                 'Save Recipe',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  bool _hasMetaData() =>
+      recipe['prepTime'] != null ||
+          recipe['cookTime'] != null ||
+          recipe['servings'] != null ||
+          recipe['difficultyLevel'] != null ||
+          recipe['caloriesPerServing'] != null;
+
+  Widget _metaChip(String label) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: const Color(0xFFE8F5E9),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Text(
+        label,
+        style: const TextStyle(
+          color: Color(0xFF2E7D32),
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    );
+  }
+
+  Widget _toolChip(String label) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF3E0),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Text(
+        label,
+        style: const TextStyle(
+          color: Color(0xFFE65100),
+          fontSize: 12,
+          fontWeight: FontWeight.w500,
+        ),
       ),
     );
   }

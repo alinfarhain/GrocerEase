@@ -3,7 +3,6 @@ import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class AIAnalysisService {
-  // ↓ CHANGED: points to your Supabase function instead of OpenAI directly
   static const String _functionUrl =
       'https://cgosdfzvwhelfexdovry.supabase.co/functions/v1/swift-action';
 
@@ -11,11 +10,14 @@ class AIAnalysisService {
     required String base64Image,
     required String mode,
   }) async {
-    // ↓ CHANGED: uses Supabase session token instead of OpenAI API key
     final session = Supabase.instance.client.auth.currentSession;
     final accessToken = session?.accessToken ?? '';
 
-    // Prompts are exactly the same as before — no changes here
+    if (accessToken.isEmpty) {
+      throw Exception('Not logged in — no session token');
+    }
+
+    // Prompts ask for all columns in your recipes table
     final prompt = mode == 'meal'
         ? '''You are a food recognition AI. Analyze this image and identify the meal.
 Respond ONLY in this exact JSON format with no extra text or markdown:
@@ -23,13 +25,17 @@ Respond ONLY in this exact JSON format with no extra text or markdown:
   "type": "meal",
   "name": "Meal Name",
   "confidence": 92,
-  "description": "Brief description",
+  "description": "Brief description of the meal",
   "recipe": {
     "prepTime": "10 mins",
     "cookTime": "20 mins",
     "servings": 4,
+    "caloriesPerServing": 450,
+    "difficultyLevel": "Medium",
+    "estimatedBudget": 15.00,
+    "toolsRequired": ["Pan", "Knife"],
     "ingredients": ["200g pasta", "2 cloves garlic"],
-    "steps": ["Step 1", "Step 2"]
+    "steps": ["Step 1 description", "Step 2 description"]
   }
 }'''
         : '''You are a food recognition AI. Identify all visible ingredients in this image.
@@ -44,24 +50,29 @@ Respond ONLY in this exact JSON format with no extra text or markdown:
     {
       "name": "Classic Tomato Soup",
       "cookTime": "30 mins",
+      "prepTime": "10 mins",
+      "servings": 4,
+      "caloriesPerServing": 320,
+      "difficultyLevel": "Easy",
+      "estimatedBudget": 8.00,
       "matchPercent": 95,
-      "ingredients": ["Tomatoes", "Onions", "Garlic"],
-      "steps": ["Step 1", "Step 2"]
+      "toolsRequired": ["Pot", "Blender"],
+      "ingredients": ["Tomatoes", "Onions", "Garlic", "Olive oil"],
+      "steps": ["Step 1 description", "Step 2 description"]
     }
   ]
 }''';
 
-    // ↓ CHANGED: sends to Supabase function, not OpenAI
     final response = await http.post(
       Uri.parse(_functionUrl),
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': 'Bearer $accessToken', // ← Supabase session token
+        'Authorization': 'Bearer $accessToken',
       },
       body: jsonEncode({
-        'base64Image': base64Image, // ← function handles the OpenAI call
+        'base64Image': base64Image,
         'mode': mode,
-        'prompt': prompt,           // ← pass prompt so function uses it
+        'prompt': prompt,
       }),
     );
 
