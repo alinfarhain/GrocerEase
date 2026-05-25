@@ -17,10 +17,21 @@ class AIAnalysisService {
       throw Exception('Not logged in — no session token');
     }
 
-    // Prompts ask for all columns in your recipes table
     final prompt = mode == 'meal'
         ? '''You are a food recognition AI. Analyze this image and identify the meal.
-Respond ONLY in this exact JSON format with no extra text or markdown:
+Respond ONLY in this exact JSON format with no extra text or markdown.
+
+IMPORTANT for ingredients array: always split into name, amount, and unit separately.
+For unit use ONLY these exact values: "g", "kg", "ml", "l", "tsp", "tbsp", "pcs", "unit"
+- pieces/each/whole → "pcs"
+- gram/grams → "g"
+- kilogram/kilograms → "kg"
+- millilitre/milliliter/millilitres → "ml"
+- litre/liter/litres → "l"
+- teaspoon/teaspoons → "tsp"
+- tablespoon/tablespoons → "tbsp"
+- anything else (pinch, clove, slice, etc.) → "unit"
+
 {
   "type": "meal",
   "name": "Meal Name",
@@ -34,12 +45,30 @@ Respond ONLY in this exact JSON format with no extra text or markdown:
     "difficultyLevel": "Medium",
     "estimatedBudget": 15.00,
     "toolsRequired": ["Pan", "Knife"],
-    "ingredients": ["200g pasta", "2 cloves garlic"],
+    "ingredients": [
+      { "name": "Chicken", "amount": 4, "unit": "pcs" },
+      { "name": "Garlic", "amount": 3, "unit": "pcs" },
+      { "name": "Salt", "amount": 1, "unit": "tsp" },
+      { "name": "Olive Oil", "amount": 2, "unit": "tbsp" },
+      { "name": "Rice", "amount": 200, "unit": "g" }
+    ],
     "steps": ["Step 1 description", "Step 2 description"]
   }
 }'''
         : '''You are a food recognition AI. Identify all visible ingredients in this image.
-Respond ONLY in this exact JSON format with no extra text or markdown:
+Respond ONLY in this exact JSON format with no extra text or markdown.
+
+IMPORTANT for ingredients array: always split into name, amount, and unit separately.
+For unit use ONLY these exact values: "g", "kg", "ml", "l", "tsp", "tbsp", "pcs", "unit"
+- pieces/each/whole → "pcs"
+- gram/grams → "g"
+- kilogram/kilograms → "kg"
+- millilitre/milliliter/millilitres → "ml"
+- litre/liter/litres → "l"
+- teaspoon/teaspoons → "tsp"
+- tablespoon/tablespoons → "tbsp"
+- anything else (pinch, clove, slice, etc.) → "unit"
+
 {
   "type": "ingredients",
   "ingredients": [
@@ -57,7 +86,12 @@ Respond ONLY in this exact JSON format with no extra text or markdown:
       "estimatedBudget": 8.00,
       "matchPercent": 95,
       "toolsRequired": ["Pot", "Blender"],
-      "ingredients": ["Tomatoes", "Onions", "Garlic", "Olive oil"],
+      "ingredients": [
+        { "name": "Tomatoes", "amount": 4, "unit": "pcs" },
+        { "name": "Onions", "amount": 1, "unit": "pcs" },
+        { "name": "Garlic", "amount": 3, "unit": "pcs" },
+        { "name": "Olive Oil", "amount": 2, "unit": "tbsp" }
+      ],
       "steps": ["Step 1 description", "Step 2 description"]
     }
   ]

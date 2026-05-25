@@ -700,31 +700,62 @@ class _RecipeDetailSheet extends StatelessWidget {
                   ),
                   const SizedBox(height: 8),
                   ...ingredients.map(
-                        (item) => Padding(
-                      padding: const EdgeInsets.only(bottom: 5),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            '• ',
-                            style: TextStyle(
-                              fontSize: 14,
-                              color: Color(0xFF2E7D32),
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          Expanded(
-                            child: Text(
-                              item.toString(),
-                              style: const TextStyle(
+                        (item) {
+                      // Format structured ingredient map into readable string
+                      // e.g. { name: Chicken, amount: 1, unit: kg } → "Chicken 1 kg"
+                      final String displayText;
+                      if (item is Map<String, dynamic>) {
+                        final name = item['name']?.toString() ?? '';
+                        final amount = item['amount'];
+                        final unit = item['unit']?.toString() ?? '';
+
+                        // Format amount: show as int if whole number, decimal if not
+                        String amountStr = '';
+                        if (amount != null) {
+                          final double amountDouble = (amount is num)
+                              ? amount.toDouble()
+                              : double.tryParse(amount.toString()) ?? 0.0;
+                          amountStr = amountDouble == amountDouble.truncateToDouble()
+                              ? amountDouble.toInt().toString()
+                              : amountDouble.toString();
+                        }
+
+                        // Build display: "Chicken 1 kg" or "Salt 1 tsp"
+                        final parts = [name, amountStr, unit]
+                            .where((s) => s.isNotEmpty && s != '0')
+                            .toList();
+                        displayText = parts.join(' ');
+                      } else {
+                        // Fallback for plain strings
+                        displayText = item.toString();
+                      }
+
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 5),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              '• ',
+                              style: TextStyle(
                                 fontSize: 14,
-                                color: Color(0xFF444444),
+                                color: Color(0xFF2E7D32),
+                                fontWeight: FontWeight.bold,
                               ),
                             ),
-                          ),
-                        ],
-                      ),
-                    ),
+                            Expanded(
+                              child: Text(
+                                displayText,
+                                style: const TextStyle(
+                                  fontSize: 14,
+                                  color: Color(0xFF444444),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
                   ),
 
                   const SizedBox(height: 16),
