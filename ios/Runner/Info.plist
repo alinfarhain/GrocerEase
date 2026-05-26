@@ -63,5 +63,9 @@
         <!-- ✅ Required for app_links to work on iOS -->
         <key>FlutterDeepLinkingEnabled</key>
         <true/>
+        <key>NSCameraUsageDescription</key>
+        <string>To scan recipe images</string>
+        <key>NSPhotoLibraryUsageDescription</key>
+        <string>To upload recipe images</string>
 </dict>
 </plist>

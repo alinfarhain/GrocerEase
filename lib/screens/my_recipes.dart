@@ -3,6 +3,7 @@ import '../globals/app_state.dart';
 import 'package:go_router/go_router.dart';
 import '../services/recipe_service.dart';
 import '../services/meal_plan_service.dart';
+import '../features/scan/scan_written_recipe_sheet.dart';
 
 class MyRecipes extends StatefulWidget {
   const MyRecipes({super.key, this.initialEditMode = false});
@@ -567,7 +568,15 @@ class _MyRecipesState extends State<MyRecipes> {
               'Extract recipe from text or handwritten notes',
               iconBgColor: const Color(0xFFFFF3E0),
               iconColor: const Color(0xFFFFB74D),
-              onTap: () => Navigator.pop(context),
+              onTap: () {
+                Navigator.pop(context); // close Add Recipe sheet first
+                showModalBottomSheet(
+                  context: context,
+                  isScrollControlled: true,
+                  backgroundColor: Colors.transparent,
+                  builder: (_) => const ScanWrittenRecipeSheet(),
+                );
+              },
             ),
           ],
         ),
@@ -1674,7 +1683,15 @@ class _MyRecipesState extends State<MyRecipes> {
           ),
         ),
         floatingActionButton: FloatingActionButton(
-          onPressed: () {},
+          onPressed: () async {
+            await showModalBottomSheet(
+              context: context,
+              isScrollControlled: true,
+              backgroundColor: Colors.transparent,
+              builder: (_) => const ScanWrittenRecipeSheet(),
+            );
+            if (mounted) _loadRecipes(); // refresh list after returning
+          },
           backgroundColor: const Color(0xFFFF7043),
           elevation: 4.0,
           shape: RoundedRectangleBorder(

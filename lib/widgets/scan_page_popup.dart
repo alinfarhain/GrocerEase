@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import '../features/scan/scan_written_recipe_sheet.dart';
 
 class ScanPagePopup extends StatelessWidget {
   const ScanPagePopup({super.key});
@@ -78,7 +79,15 @@ class ScanPagePopup extends StatelessWidget {
             'Extract recipe and grocery list from written recipes or URL website',
             iconBgColor: const Color(0xFFFFF3E0),
             iconColor: const Color(0xFFFF9800),
-            onTap: () => Navigator.pop(context),
+            onTap: () {
+              Navigator.pop(context); // close Smart Scan sheet first
+              showModalBottomSheet(
+                context: context,
+                isScrollControlled: true,
+                backgroundColor: Colors.transparent,
+                builder: (_) => const ScanWrittenRecipeSheet(),
+              );
+            },
           ),
           const SizedBox(height: 16.0),
           _buildScanOption(
