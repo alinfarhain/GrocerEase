@@ -67,5 +67,11 @@
         <string>To scan recipe images</string>
         <key>NSPhotoLibraryUsageDescription</key>
         <string>To upload recipe images</string>
+
+        <!-- Add inside the <dict> -->
+        <key>NSCameraUsageDescription</key>
+        <string>Used to scan pantry items and barcodes</string>
+        <key>NSPhotoLibraryUsageDescription</key>
+        <string>Used to upload photos of pantry items</string>
 </dict>
 </plist>

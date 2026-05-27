@@ -44,7 +44,8 @@ class ExtractedRecipe {
     if (servings != null) map['servings'] = servings;
     if (sourceType != null) map['source_type'] = sourceType;
     if (sourceUrl != null) map['source_url'] = sourceUrl;
-    if (prepTimeMinutes != null) map['prep_time'] = prepTimeMinutes;
+    // No prep_time column in recipes table — cooking_duration is already set above
+    // prepTimeMinutes is intentionally not saved
 
     return map;
   }

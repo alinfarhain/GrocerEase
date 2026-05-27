@@ -20,8 +20,13 @@ dependencies:
   app_links: ^6.1.1
   dotted_border: ^2.1.0
   http: ^1.2.0
-  camera: ^0.11.0
-  html: ^0.15.4              # parse HTML from URL extraction
+  camera: ^0.10.5+9   # ← add this line
+  html: ^0.15.4
+  mobile_scanner: ^5.2.3       # barcode scanning
+  dio: ^5.4.3
+  permission_handler: ^11.3.1
+  uuid: ^4.4.0
+
 
 dev_dependencies:
   flutter_test:

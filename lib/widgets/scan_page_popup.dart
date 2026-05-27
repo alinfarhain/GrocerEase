@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../features/scan/scan_written_recipe_sheet.dart';
+import '../screens/pantry_scan_screen.dart';
 
 class ScanPagePopup extends StatelessWidget {
   const ScanPagePopup({super.key});
@@ -97,7 +98,15 @@ class ScanPagePopup extends StatelessWidget {
             'Detect ingredients from pantry or barcode, and add them to your pantry inventory',
             iconBgColor: const Color(0xFFE8F5E9),
             iconColor: const Color(0xFF1BAB52),
-            onTap: () => Navigator.pop(context),
+            onTap: () {
+              Navigator.pop(context); // close bottom sheet
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const PantryScanScreen(),
+                ),
+              );
+            },
           ),
         ],
       ),

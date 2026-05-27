@@ -7,6 +7,7 @@ import 'globals/app_state.dart';
 import 'integrations/supabase_service.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'services/deep_link_service.dart';
+import 'providers/scan_provider.dart';          // ← ADD
 
 late SharedPreferences sharedPrefs;
 
@@ -15,14 +16,14 @@ void main() async {
 
   // Initialize Supabase
   await Supabase.initialize(
-    url: 'https://cgosdfzvwhelfexdovry.supabase.co',   // ← replace
-    anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNnb3NkZnp2d2hlbGZleGRvdnJ5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc4OTU4OTgsImV4cCI6MjA5MzQ3MTg5OH0.FXcbpyTn4KqalmYe-00ibCHBYM1l5A6zZIvvWudSTsc',                      // ← replace
+    url: 'https://cgosdfzvwhelfexdovry.supabase.co',
+    anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNnb3NkZnp2d2hlbGZleGRvdnJ5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc4OTU4OTgsImV4cCI6MjA5MzQ3MTg5OH0.FXcbpyTn4KqalmYe-00ibCHBYM1l5A6zZIvvWudSTsc',
   );
 
   // Initialize SharedPreferences
   sharedPrefs = await SharedPreferences.getInstance();
 
-  // Initialize Supabase
+  // Initialize Supabase service
   await SupabaseService().initialize();
 
   // Set status bar colors
@@ -34,8 +35,15 @@ void main() async {
   );
 
   runApp(
-    ChangeNotifierProvider(
-      create: (context) => AppState(),
+    MultiProvider(                               // ← CHANGED: was ChangeNotifierProvider
+      providers: [
+        ChangeNotifierProvider(
+          create: (context) => AppState(),       // ← existing, unchanged
+        ),
+        ChangeNotifierProvider(
+          create: (context) => ScanProvider(),   // ← ADD
+        ),
+      ],
       child: const GroceryApp(),
     ),
   );
@@ -55,18 +63,15 @@ class _GroceryAppState extends State<GroceryApp> {
   @override
   void initState() {
     super.initState();
-    _initDeepLinks(); // ✅ ADD: start listening for deep links
+    _initDeepLinks();
   }
 
   void _initDeepLinks() {
     DeepLinkService().initialize(
       onAuthenticated: () {
-        // appRouter is your GoRouter instance from globals/router.dart
-        // Adjust the route path to match whatever your home route is called
         appRouter.go('/home');
       },
       onVerificationFailed: () {
-        // Optional: go to login with an error message
         appRouter.go('/login');
       },
     );
@@ -74,7 +79,7 @@ class _GroceryAppState extends State<GroceryApp> {
 
   @override
   void dispose() {
-    DeepLinkService().dispose(); // ✅ ADD: cancel the stream subscription
+    DeepLinkService().dispose();
     super.dispose();
   }
 
