@@ -68,19 +68,25 @@ class RecipeExtractionService {
     final base64Image = base64Encode(bytes);
 
     const prompt = '''
-You are a recipe extraction assistant. Extract recipe information ONLY from what is 
-visible in the image. Do NOT infer, guess, or fill in any information not explicitly shown.
-Respond ONLY in this exact JSON format with no extra text or markdown:
+You are a recipe data extraction assistant.
+
+Extract the recipe from the image. Return a single JSON object.
+Rules:
+- Extract ONLY what is explicitly visible in the image
+- For missing fields use JSON null (not the string "null")
+- Do not add, guess or infer any data
+- Return raw JSON only — no markdown, no code fences, no explanation
+
+JSON schema:
 {
-  "title": "string or null",
-  "description": "string or null",
-  "ingredients": [{"name": "string", "quantity": "string or null", "unit": "string or null"}],
-  "instructions": ["step 1", "step 2"],
-  "prep_time_minutes": null,
-  "cook_time_minutes": null,
-  "servings": null
+  "title": <string or null>,
+  "description": <string or null>,
+  "ingredients": <array of {name: string, quantity: string or null, unit: string or null} or null>,
+  "instructions": <array of strings or null>,
+  "prep_time_minutes": <integer or null>,
+  "cook_time_minutes": <integer or null>,
+  "servings": <integer or null>
 }
-Use null for any field not visible in the image. Return ONLY the JSON object.
 ''';
 
     final response = await http.post(
@@ -111,43 +117,8 @@ Use null for any field not visible in the image. Return ONLY the JSON object.
   Future<ExtractedRecipe> extractFromUrl(String url) async {
     if (_accessToken.isEmpty) throw Exception('Not logged in — no session token');
 
-    // Step 1: Fetch the web page content
-    final pageResponse = await http.get(
-      Uri.parse(url),
-      headers: {'User-Agent': 'Mozilla/5.0 (compatible; RecipeBot/1.0)'},
-    ).timeout(const Duration(seconds: 15));
-
-    if (pageResponse.statusCode != 200) {
-      throw Exception('Could not fetch URL (${pageResponse.statusCode})');
-    }
-
-    // Step 2: Strip HTML to plain text
-    final cleanText = _stripHtml(pageResponse.body);
-    final truncated =
-    cleanText.length > 10000 ? cleanText.substring(0, 10000) : cleanText;
-
-    // Step 3: Build a text-only prompt embedding the page content
-    final prompt = '''
-You are a recipe extraction assistant. Extract recipe information ONLY from the 
-webpage text below. Do NOT infer, guess, or fill in any information not explicitly 
-present in the text.
-Respond ONLY in this exact JSON format with no extra text or markdown:
-{
-  "title": "string or null",
-  "description": "string or null",
-  "ingredients": [{"name": "string", "quantity": "string or null", "unit": "string or null"}],
-  "instructions": ["step 1", "step 2"],
-  "prep_time_minutes": null,
-  "cook_time_minutes": null,
-  "servings": null
-}
-Use null for any field not found. Return ONLY the JSON object.
-
-WEBPAGE TEXT:
-$truncated
-''';
-
-    // Step 4: Call the same edge function — no image for URL mode
+    // Send the URL directly to the edge function — let the server fetch it
+    // (server-side fetches are not blocked by recipe websites unlike mobile)
     final response = await http.post(
       Uri.parse(_functionUrl),
       headers: {
@@ -156,8 +127,7 @@ $truncated
       },
       body: jsonEncode({
         'mode': 'recipe_url',
-        'prompt': prompt,
-        // No base64Image — text is embedded in the prompt
+        'url': url,
       }),
     );
 
@@ -191,27 +161,39 @@ $truncated
         required String sourceType,
         String? sourceUrl,
       }) {
+    // Treat string "null" as actual null
+    String? str(dynamic v) {
+      if (v == null || v.toString().toLowerCase() == 'null') return null;
+      return v.toString();
+    }
+
     List<Map<String, dynamic>>? ingredients;
-    if (json['ingredients'] != null) {
+    if (json['ingredients'] != null && json['ingredients'] is List) {
       ingredients = (json['ingredients'] as List)
           .map((e) => Map<String, dynamic>.from(e as Map))
           .toList();
     }
 
     List<String>? instructions;
-    if (json['instructions'] != null) {
+    if (json['instructions'] != null && json['instructions'] is List) {
       instructions =
           (json['instructions'] as List).map((e) => e.toString()).toList();
     }
 
     return ExtractedRecipe(
-      title: json['title'] as String?,
-      description: json['description'] as String?,
+      title: str(json['title']),
+      description: str(json['description']),
       ingredients: ingredients,
       instructions: instructions,
-      prepTimeMinutes: json['prep_time_minutes'] as int?,
-      cookTimeMinutes: json['cook_time_minutes'] as int?,
-      servings: json['servings'] as int?,
+      prepTimeMinutes: json['prep_time_minutes'] is int
+          ? json['prep_time_minutes'] as int
+          : int.tryParse(json['prep_time_minutes']?.toString() ?? ''),
+      cookTimeMinutes: json['cook_time_minutes'] is int
+          ? json['cook_time_minutes'] as int
+          : int.tryParse(json['cook_time_minutes']?.toString() ?? ''),
+      servings: json['servings'] is int
+          ? json['servings'] as int
+          : int.tryParse(json['servings']?.toString() ?? ''),
       sourceType: sourceType,
       sourceUrl: sourceUrl,
     );
