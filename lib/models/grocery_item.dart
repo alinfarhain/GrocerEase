@@ -1,9 +1,8 @@
-// ─────────────────────────────────────────────
-//  grocery_item.dart  (updated)
-//  Changes:
-//   • name, quantity, quantityAmount, unit, price now mutable
-//     so items can be edited in-place via the Edit sheet
-// ─────────────────────────────────────────────
+// lib/models/grocery_item.dart
+// Changes vs previous version:
+//   • Added suggestedPurchaseUnit  — e.g. "500g chicken tray"
+//   • Added priceSource            — "AI Malaysian Estimate" | "Estimated" | "User"
+//   • Added pantryShortageAmount   — how much was still needed after pantry check
 
 class GroceryItem {
   final String id;
@@ -20,6 +19,17 @@ class GroceryItem {
   final List<String> dietaryTags;
   bool isChecked;
 
+  // ── Smart pricing fields (nullable for backward compat with old rows) ──────
+  /// Retail product description, e.g. "500g chicken tray" or "300ml bottle".
+  final String? suggestedPurchaseUnit;
+
+  /// Where the price came from: "AI Malaysian Estimate" | "Estimated" | "User".
+  final String? priceSource;
+
+  /// How much of this ingredient was still needed after subtracting pantry stock.
+  /// Used for display ("Needed: 300g after pantry").
+  final double? pantryShortageAmount;
+
   GroceryItem({
     required this.id,
     required this.name,
@@ -31,9 +41,12 @@ class GroceryItem {
     this.recipe,
     this.dietaryTags = const [],
     this.isChecked = false,
+    this.suggestedPurchaseUnit,
+    this.priceSource,
+    this.pantryShortageAmount,
   });
 
-  /// Price per unit string e.g. "RM 2.00 / pcs".
+  /// Price per unit string e.g. "RM 2.00 / kg".
   /// Returns null when there is not enough information.
   String? pricePerUnit(String currencySymbol) {
     if (unit == null || quantityAmount == null || quantityAmount! <= 0) {

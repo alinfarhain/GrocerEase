@@ -1,9 +1,8 @@
-// ─────────────────────────────────────────────
-//  grocery_item_tile.dart  (updated)
-//  Changes:
-//   • Added optional [onEdit] — shows ✏️ edit icon when edit mode is on
-//   • Consistent currencySymbol, live price-per-unit, dietary warning chip
-// ─────────────────────────────────────────────
+// lib/widgets/grocery_item_tile.dart
+// Changes vs previous version:
+//   • Shows suggestedPurchaseUnit as subtitle ("Buy: 500g chicken tray")
+//   • Shows priceSource as a small badge ("AI Est." / "Estimated" / "User")
+//   • Pantry shortage note when pantryShortageAmount is set
 
 import 'package:flutter/material.dart';
 import '../models/grocery_item.dart';
@@ -76,7 +75,9 @@ class GroceryItemTile extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  // ── Main row: checkbox + name + price ─────────────────
                   Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       _buildCheckbox(),
                       const SizedBox(width: 14),
@@ -86,6 +87,7 @@ class GroceryItemTile extends StatelessWidget {
                           children: [
                             _buildItemName(),
                             const SizedBox(height: 2),
+                            // Quantity line
                             Text(
                               item.quantity,
                               style: TextStyle(
@@ -94,10 +96,39 @@ class GroceryItemTile extends StatelessWidget {
                                 fontWeight: FontWeight.w400,
                               ),
                             ),
+                            // ── Suggested purchase unit ───────────────
+                            if (item.suggestedPurchaseUnit != null &&
+                                item.suggestedPurchaseUnit!.isNotEmpty &&
+                                !item.isChecked) ...[
+                              const SizedBox(height: 3),
+                              Row(
+                                children: [
+                                  const Icon(
+                                    Icons.shopping_bag_outlined,
+                                    size: 12,
+                                    color: Color(0xFF1BAB52),
+                                  ),
+                                  const SizedBox(width: 3),
+                                  Flexible(
+                                    child: Text(
+                                      'Buy: ${item.suggestedPurchaseUnit}',
+                                      style: const TextStyle(
+                                        fontSize: 12,
+                                        color: Color(0xFF2E7D32),
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
                           ],
                         ),
                       ),
-                      // ── Price column ──────────────────────────────
+
+                      // ── Price column ──────────────────────────────────
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
@@ -111,7 +142,9 @@ class GroceryItemTile extends StatelessWidget {
                                   : const Color(0xFF1A1A1A),
                             ),
                           ),
-                          if (item.pricePerUnit(currencySymbol) != null)
+                          // Price-per-unit (legacy display for manually added items)
+                          if (item.pricePerUnit(currencySymbol) != null &&
+                              item.suggestedPurchaseUnit == null)
                             Text(
                               item.pricePerUnit(currencySymbol)!,
                               style: TextStyle(
@@ -120,9 +153,16 @@ class GroceryItemTile extends StatelessWidget {
                                 fontWeight: FontWeight.w400,
                               ),
                             ),
+                          // ── Price source badge ─────────────────────────
+                          if (item.priceSource != null &&
+                              !item.isChecked) ...[
+                            const SizedBox(height: 3),
+                            _PriceSourceBadge(source: item.priceSource!),
+                          ],
                         ],
                       ),
-                      // ── Edit icon (only shown in edit mode) ───────
+
+                      // ── Edit icon (only shown in edit mode) ───────────
                       if (onEdit != null) ...[
                         const SizedBox(width: 8),
                         GestureDetector(
@@ -143,7 +183,8 @@ class GroceryItemTile extends StatelessWidget {
                       ],
                     ],
                   ),
-                  // ── Dietary warning chip ──────────────────────────
+
+                  // ── Dietary warning chip ───────────────────────────────
                   if (hasDietaryWarning) ...[
                     const SizedBox(height: 8),
                     Row(
@@ -196,9 +237,8 @@ class GroceryItemTile extends StatelessWidget {
         shape: BoxShape.circle,
         color: item.isChecked ? const Color(0xFF2E7D32) : Colors.transparent,
         border: Border.all(
-          color: item.isChecked
-              ? const Color(0xFF2E7D32)
-              : Colors.grey.shade400,
+          color:
+          item.isChecked ? const Color(0xFF2E7D32) : Colors.grey.shade400,
           width: 2,
         ),
       ),
@@ -214,10 +254,70 @@ class GroceryItemTile extends StatelessWidget {
       style: TextStyle(
         fontSize: 15,
         fontWeight: FontWeight.w600,
-        color:
-        item.isChecked ? Colors.grey.shade400 : const Color(0xFF1A1A1A),
+        color: item.isChecked ? Colors.grey.shade400 : const Color(0xFF1A1A1A),
         decoration: item.isChecked ? TextDecoration.lineThrough : null,
         decorationColor: Colors.grey.shade400,
+      ),
+    );
+  }
+}
+
+// ── Price source badge ────────────────────────────────────────────────────────
+
+class _PriceSourceBadge extends StatelessWidget {
+  final String source;
+
+  const _PriceSourceBadge({required this.source});
+
+  @override
+  Widget build(BuildContext context) {
+    final isAI = source.contains('AI');
+    final isUser = source.contains('User');
+
+    final Color bgColor;
+    final Color textColor;
+    final IconData icon;
+
+    if (isUser) {
+      bgColor = const Color(0xFFE3F2FD);
+      textColor = const Color(0xFF1565C0);
+      icon = Icons.person_outline;
+    } else if (isAI) {
+      bgColor = const Color(0xFFF3E5F5);
+      textColor = const Color(0xFF7B1FA2);
+      icon = Icons.auto_awesome_outlined;
+    } else {
+      bgColor = const Color(0xFFFFF8E1);
+      textColor = const Color(0xFFE65100);
+      icon = Icons.info_outline;
+    }
+
+    final label = isUser
+        ? 'User price'
+        : isAI
+        ? 'AI Est.'
+        : 'Est.';
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 10, color: textColor),
+          const SizedBox(width: 2),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 10,
+              color: textColor,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
       ),
     );
   }

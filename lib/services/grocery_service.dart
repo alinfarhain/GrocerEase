@@ -1,3 +1,11 @@
+// lib/services/grocery_service.dart
+// Changes vs previous version:
+//   • addItem() now accepts suggestedPurchaseUnit, priceSource, pantryShortageAmount
+//   • _fromRow() maps the three new Supabase columns
+//   • updateItem() accepts optional priceSource (for user overrides)
+//
+// ⚠️  Run the SQL migration in supabase_migration.sql BEFORE deploying this version.
+
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// All Supabase CRUD for the grocery_items table.
@@ -29,6 +37,10 @@ class GroceryService {
     String category = 'Other',
     String? recipe,
     List<String> dietaryTags = const [],
+    // ── New smart-pricing fields ────────────────────────────────────────────
+    String? suggestedPurchaseUnit,
+    String? priceSource,
+    double? pantryShortageAmount,
   }) async {
     if (_userId == null) throw Exception('Not authenticated');
     final inserted = await _db
@@ -44,6 +56,12 @@ class GroceryService {
       'recipe': recipe?.trim(),
       'dietary_tags': dietaryTags,
       'is_checked': false,
+      // New columns (nullable — safe if column doesn't exist yet)
+      if (suggestedPurchaseUnit != null)
+        'suggested_purchase_unit': suggestedPurchaseUnit.trim(),
+      if (priceSource != null) 'price_source': priceSource.trim(),
+      if (pantryShortageAmount != null)
+        'pantry_shortage_amount': pantryShortageAmount,
     })
         .select()
         .single();
@@ -60,6 +78,7 @@ class GroceryService {
     String? unit,
     double? price,
     bool? isChecked,
+    String? priceSource, // Set to "User" when the user manually overrides price
   }) async {
     final payload = <String, dynamic>{};
     if (name != null) payload['name'] = name.trim();
@@ -68,6 +87,7 @@ class GroceryService {
     if (unit != null) payload['unit'] = unit.trim();
     if (price != null) payload['price'] = price;
     if (isChecked != null) payload['is_checked'] = isChecked;
+    if (priceSource != null) payload['price_source'] = priceSource.trim();
 
     final updated = await _db
         .from('grocery_items')
@@ -114,6 +134,11 @@ class GroceryService {
       'recipe': row['recipe'] as String?,
       'dietaryTags': List<String>.from(row['dietary_tags'] ?? []),
       'isChecked': row['is_checked'] as bool? ?? false,
+      // New smart-pricing fields (null-safe for old rows without these columns)
+      'suggestedPurchaseUnit': row['suggested_purchase_unit'] as String?,
+      'priceSource': row['price_source'] as String?,
+      'pantryShortageAmount':
+      (row['pantry_shortage_amount'] as num?)?.toDouble(),
     };
   }
 }
