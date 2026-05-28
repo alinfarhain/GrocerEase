@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:camera/camera.dart';
@@ -48,9 +49,8 @@ class _PantryScanScreenState extends State<PantryScanScreen>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (_cameraController == null || !_cameraController!.value.isInitialized) {
-      return;
-    }
+    if (_cameraController == null ||
+        !_cameraController!.value.isInitialized) return;
     if (state == AppLifecycleState.inactive) {
       _cameraController?.dispose();
     } else if (state == AppLifecycleState.resumed) {
@@ -106,7 +106,6 @@ class _PantryScanScreenState extends State<PantryScanScreen>
 
   Future<void> _captureAndDetect() async {
     if (!_cameraReady || _cameraController == null || _isProcessing) return;
-
     setState(() => _isProcessing = true);
     try {
       final xFile = await _cameraController!.takePicture();
@@ -160,38 +159,272 @@ class _PantryScanScreenState extends State<PantryScanScreen>
     try {
       final item = await _lookupBarcode(barcode);
       if (!mounted) return;
-      _navigateToResult([item]);
-    } catch (e) {
-      if (mounted) {
-        _showError('Product not found: $e');
+
+      if (item == null) {
         setState(() {
           _isProcessing = false;
           _barcodeHandled = false;
         });
+        _showNotFoundDialog(barcode);
+        return;
+      }
+
+      _navigateToResult([item]);
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isProcessing = false;
+          _barcodeHandled = false;
+        });
+        _showError('Barcode lookup failed: $e');
       }
     }
   }
 
-  Future<DetectedPantryItem> _lookupBarcode(String barcode) async {
+  /// Returns null if product not found or data is unreliable
+  Future<DetectedPantryItem?> _lookupBarcode(String barcode) async {
     final uri = Uri.parse(
       'https://world.openfoodfacts.org/api/v0/product/$barcode.json',
     );
-    final response = await _aiService.httpClient.get(uri);
+
+    final response = await _aiService.httpClient
+        .get(uri)
+        .timeout(const Duration(seconds: 10));
+
+    if (response.statusCode != 200) return null;
+
     final data = jsonDecode(response.body);
 
-    if (data['status'] != 1) throw Exception('Not found in database');
+    // Product not in database
+    if (data['status'] != 1) return null;
 
-    final p = data['product'];
+    final p = data['product'] as Map<String, dynamic>? ?? {};
+
+    // Must have a valid product name
+    final productName = (p['product_name'] as String? ?? '').trim();
+    if (productName.isEmpty) return null;
+
+    // Map Open Food Facts category tags → our categories
+    final tags = (p['categories_tags'] as List<dynamic>? ?? [])
+        .map((t) => t.toString().toLowerCase())
+        .toList();
+
+    String category = 'other';
+    if (tags.any((t) =>
+    t.contains('beverages') ||
+        t.contains('drinks') ||
+        t.contains('waters'))) {
+      category = 'beverages';
+    } else if (tags.any((t) =>
+    t.contains('dairy') || t.contains('milk'))) {
+      category = 'dairy';
+    } else if (tags.any((t) =>
+    t.contains('snack') ||
+        t.contains('biscuit') ||
+        t.contains('chocolate'))) {
+      category = 'snacks';
+    } else if (tags.any((t) => t.contains('frozen'))) {
+      category = 'frozen';
+    } else if (tags.any((t) =>
+    t.contains('cereal') ||
+        t.contains('grain') ||
+        t.contains('bread'))) {
+      category = 'grains';
+    } else if (tags.any((t) =>
+    t.contains('sauce') || t.contains('condiment'))) {
+      category = 'condiments';
+    } else if (tags.any((t) =>
+    t.contains('meat') || t.contains('poultry'))) {
+      category = 'meat';
+    } else if (tags.any((t) =>
+    t.contains('seafood') || t.contains('fish'))) {
+      category = 'seafood';
+    } else if (tags.any((t) =>
+    t.contains('spice') || t.contains('herb'))) {
+      category = 'spices';
+    }
+
+    // Parse quantity + unit from product quantity string e.g. "500 ml", "1 kg"
+    double quantity = 1;
+    String unit = 'pieces';
+    final qtyString =
+    (p['quantity'] as String? ?? '').toLowerCase().trim();
+    if (qtyString.isNotEmpty) {
+      final match = RegExp(r'([\d.]+)\s*(ml|l|g|kg|oz|fl\s*oz)?')
+          .firstMatch(qtyString);
+      if (match != null) {
+        quantity = double.tryParse(match.group(1) ?? '1') ?? 1;
+        final rawUnit = (match.group(2) ?? '').trim();
+        unit = switch (rawUnit) {
+          'ml'    => 'mL',
+          'l'     => 'L',
+          'g'     => 'g',
+          'kg'    => 'kg',
+          'oz'    => 'g',
+          'fl oz' => 'mL',
+          _       => 'pieces',
+        };
+      }
+    }
+
+    // Brand — clean up multiple brands separated by commas
+    String? brand = (p['brands'] as String? ?? '').trim();
+    if (brand!.isEmpty) brand = null;
+    if (brand != null && brand.contains(',')) {
+      brand = brand.split(',').first.trim();
+    }
+
     return DetectedPantryItem(
-      itemName: p['product_name'] ?? 'Unknown Product',
-      brand: p['brands'],
-      category: 'other',
-      quantity: 1,
-      unit: 'pieces',
-      usageState: 'full',
-      usagePercent: 100,
-      storageLocation: 'pantry',
+      itemName:            productName,
+      brand:               brand,
+      category:            category,
+      quantity:            quantity,
+      unit:                unit,
+      usageState:          'full',
+      usagePercent:        100,
+      storageLocation:     'pantry',
+      storageAdvice:       null,
+      shelfLifeDays:       null,
       detectionConfidence: 0.95,
+    );
+  }
+
+  void _showNotFoundDialog(String barcode) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (ctx) => Container(
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Drag handle
+            Container(
+              width: 40,
+              height: 4,
+              margin: const EdgeInsets.only(bottom: 20),
+              decoration: BoxDecoration(
+                color: Colors.grey.shade300,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+
+            // Icon
+            Container(
+              width: 64,
+              height: 64,
+              decoration: BoxDecoration(
+                color: Colors.orange.shade50,
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                Icons.search_off_rounded,
+                size: 32,
+                color: Colors.orange.shade600,
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            const Text(
+              'Product not found',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+                color: Color(0xFF003D33),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Barcode $barcode was not found in the product database.',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 14, color: Colors.grey.shade600),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'This may be a regional product not listed in Open Food Facts.',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 12, color: Colors.grey.shade400),
+            ),
+            const SizedBox(height: 28),
+
+            // Add manually
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: () {
+                  Navigator.pop(ctx);
+                  Navigator.pop(context);
+                  // Pantry page will show AddItemManuallySheet on return
+                },
+                icon: const Icon(Icons.edit_outlined, size: 18),
+                label: const Text(
+                  'Add Item Manually',
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF2D9A5F),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  elevation: 0,
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+
+            // Scan different barcode
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: () => Navigator.pop(ctx),
+                icon: const Icon(
+                  Icons.qr_code_scanner_outlined,
+                  size: 18,
+                ),
+                label: const Text(
+                  'Scan Different Barcode',
+                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+                ),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: const Color(0xFF003D33),
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  side: BorderSide(color: Colors.grey.shade300),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+
+            // Cancel
+            TextButton(
+              onPressed: () {
+                Navigator.pop(ctx);
+                Navigator.pop(context);
+              },
+              child: Text(
+                'Cancel',
+                style: TextStyle(
+                  color: Colors.grey.shade500,
+                  fontSize: 14,
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
     );
   }
 
@@ -234,13 +467,8 @@ class _PantryScanScreenState extends State<PantryScanScreen>
       body: Stack(
         fit: StackFit.expand,
         children: [
-          // Layer 1: camera or barcode scanner
           _buildCameraLayer(),
-
-          // Layer 2: dark vignette overlay
           _buildVignette(),
-
-          // Layer 3: UI controls
           SafeArea(
             child: Column(
               children: [
@@ -255,8 +483,6 @@ class _PantryScanScreenState extends State<PantryScanScreen>
               ],
             ),
           ),
-
-          // Layer 4: processing spinner
           if (_isProcessing) _buildLoadingOverlay(),
         ],
       ),
@@ -290,7 +516,6 @@ class _PantryScanScreenState extends State<PantryScanScreen>
       );
     }
 
-    // Live camera preview — fills the entire screen
     return SizedBox.expand(
       child: FittedBox(
         fit: BoxFit.cover,
@@ -323,7 +548,6 @@ class _PantryScanScreenState extends State<PantryScanScreen>
       padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
       child: Row(
         children: [
-          // Close
           GestureDetector(
             onTap: () => Navigator.pop(context),
             child: Container(
@@ -335,13 +559,10 @@ class _PantryScanScreenState extends State<PantryScanScreen>
                 border: Border.all(
                     color: Colors.white.withOpacity(0.2), width: 0.5),
               ),
-              child:
-              const Icon(Icons.close, color: Colors.white, size: 18),
+              child: const Icon(Icons.close, color: Colors.white, size: 18),
             ),
           ),
           const Spacer(),
-
-          // Toggle pill
           Container(
             padding: const EdgeInsets.all(3),
             decoration: BoxDecoration(
@@ -371,19 +592,15 @@ class _PantryScanScreenState extends State<PantryScanScreen>
       onTap: () => _switchMode(mode),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
-        padding:
-        const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         decoration: BoxDecoration(
-          color:
-          active ? const Color(0xFF2D9A5F) : Colors.transparent,
+          color: active ? const Color(0xFF2D9A5F) : Colors.transparent,
           borderRadius: BorderRadius.circular(50),
         ),
         child: Text(
           label,
           style: TextStyle(
-            color: active
-                ? Colors.white
-                : Colors.white.withOpacity(0.6),
+            color: active ? Colors.white : Colors.white.withOpacity(0.6),
             fontSize: 13,
             fontWeight: FontWeight.w600,
           ),
@@ -402,8 +619,7 @@ class _PantryScanScreenState extends State<PantryScanScreen>
 
   Widget _buildScanLabel() {
     return Container(
-      padding:
-      const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
       decoration: BoxDecoration(
         color: Colors.black.withOpacity(0.55),
         borderRadius: BorderRadius.circular(20),
@@ -428,7 +644,6 @@ class _PantryScanScreenState extends State<PantryScanScreen>
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          // Upload button (scan item mode only)
           if (_mode == ScanMode.scanItem)
             GestureDetector(
               onTap: _isProcessing ? null : _uploadAndDetect,
@@ -441,8 +656,7 @@ class _PantryScanScreenState extends State<PantryScanScreen>
                     decoration: BoxDecoration(
                       color: Colors.black.withOpacity(0.4),
                       border: Border.all(
-                          color: Colors.white.withOpacity(0.5),
-                          width: 1.5),
+                          color: Colors.white.withOpacity(0.5), width: 1.5),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: const Icon(
@@ -465,7 +679,6 @@ class _PantryScanScreenState extends State<PantryScanScreen>
           else
             const SizedBox(width: 60),
 
-          // Shutter / scanning indicator
           if (_mode == ScanMode.scanItem)
             GestureDetector(
               onTap: _isProcessing ? null : _captureAndDetect,
@@ -507,8 +720,7 @@ class _PantryScanScreenState extends State<PantryScanScreen>
               ),
               child: const Text(
                 'Scanning…',
-                style:
-                TextStyle(color: Color(0xFF5BC88A), fontSize: 13),
+                style: TextStyle(color: Color(0xFF5BC88A), fontSize: 13),
               ),
             ),
 
@@ -530,9 +742,10 @@ class _PantryScanScreenState extends State<PantryScanScreen>
             Text(
               'Detecting items…',
               style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 16,
-                  fontWeight: FontWeight.w500),
+                color: Colors.white,
+                fontSize: 16,
+                fontWeight: FontWeight.w500,
+              ),
             ),
             SizedBox(height: 6),
             Text(
@@ -546,7 +759,8 @@ class _PantryScanScreenState extends State<PantryScanScreen>
   }
 }
 
-// Viewfinder corner painter
+// ── Viewfinder corner painter ─────────────────────────────────────────────────
+
 class _ViewfinderPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
@@ -560,16 +774,12 @@ class _ViewfinderPainter extends CustomPainter {
     final w = size.width;
     final h = size.height;
 
-    // Top-left
     canvas.drawLine(Offset(0, len), Offset(0, 0), paint);
     canvas.drawLine(Offset(0, 0), Offset(len, 0), paint);
-    // Top-right
     canvas.drawLine(Offset(w - len, 0), Offset(w, 0), paint);
     canvas.drawLine(Offset(w, 0), Offset(w, len), paint);
-    // Bottom-left
     canvas.drawLine(Offset(0, h - len), Offset(0, h), paint);
     canvas.drawLine(Offset(0, h), Offset(len, h), paint);
-    // Bottom-right
     canvas.drawLine(Offset(w - len, h), Offset(w, h), paint);
     canvas.drawLine(Offset(w, h), Offset(w, h - len), paint);
   }
