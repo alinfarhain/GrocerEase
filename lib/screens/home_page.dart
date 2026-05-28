@@ -27,6 +27,8 @@ class _HomePageState extends State<HomePage> {
     _loadDashboard();
   }
 
+  // ── Data fetching ─────────────────────────────────────────────────────────
+
   Future<void> _loadDashboard() async {
     setState(() => _isLoading = true);
     final userId = Supabase.instance.client.auth.currentUser?.id;
@@ -35,13 +37,17 @@ class _HomePageState extends State<HomePage> {
       return;
     }
     try {
-      // Run all queries concurrently
+      // Auto-create user_profiles row for accounts created before the upsert
+      // fix was added to register_page.dart.
+      await _ensureProfile(userId);
+
       final results = await Future.wait([
         _fetchGrocerySummary(userId),
         _fetchBudget(userId),
         _fetchThisWeekMeals(userId),
         _fetchExpiringPantryItems(userId),
       ]);
+
       if (mounted) {
         setState(() {
           _groceryItemsRemaining = results[0] as int;
@@ -57,8 +63,32 @@ class _HomePageState extends State<HomePage> {
           _isLoading = false;
         });
       }
-    } catch (_) {
+    } catch (e) {
       if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  /// Creates a user_profiles row if one does not already exist for this user.
+  Future<void> _ensureProfile(String userId) async {
+    try {
+      final existing = await Supabase.instance.client
+          .from('user_profiles')
+          .select('id')
+          .eq('id', userId)
+          .maybeSingle();
+      if (existing == null) {
+        final user = Supabase.instance.client.auth.currentUser;
+        final fullName =
+            (user?.userMetadata?['full_name'] as String?)?.trim() ?? '';
+        await Supabase.instance.client.from('user_profiles').insert({
+          'id': userId,
+          'full_name': fullName,
+          'budget': 400.0,
+          'dietary_preference': 'None',
+        });
+      }
+    } catch (_) {
+      // Non-fatal — continue loading even if this fails
     }
   }
 
@@ -78,7 +108,6 @@ class _HomePageState extends State<HomePage> {
         .maybeSingle();
     final budget = (profile?['budget'] as num?)?.toDouble() ?? 400.0;
 
-    // Sum price of checked (purchased) grocery items as "spent"
     final checkedItems = await Supabase.instance.client
         .from('grocery_items')
         .select('price')
@@ -86,6 +115,7 @@ class _HomePageState extends State<HomePage> {
         .eq('is_checked', true);
     final spent = (checkedItems as List)
         .fold(0.0, (s, r) => s + ((r['price'] as num?)?.toDouble() ?? 0));
+
     return {'budget': budget, 'spent': spent};
   }
 
@@ -106,57 +136,59 @@ class _HomePageState extends State<HomePage> {
     return List<Map<String, dynamic>>.from(rows);
   }
 
+  /// Fetches soon-expiring items (within 7 days) AND low-stock items
+  /// (quantity <= 1). Each row is tagged with 'low_stock' so the UI can
+  /// display "Running low" vs an expiry countdown label.
+  ///
+  /// IMPORTANT: pantry_items uses column 'item_name', NOT 'name'.
   Future<List<Map<String, dynamic>>> _fetchExpiringPantryItems(
       String userId) async {
     final today = DateTime.now();
     final in7Days = today.add(const Duration(days: 7));
     final fmt = (DateTime d) =>
     '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
-    final rows = await Supabase.instance.client
+
+    // Soon-expiring items (has an expiry date within 7 days, not consumed)
+    final expiringRows = await Supabase.instance.client
         .from('pantry_items')
-        .select('name, expiry_date, quantity')
+        .select('item_name, expiry_date, quantity') // ← correct column: item_name
         .eq('user_id', userId)
+        .eq('is_consumed', false)
+        .not('expiry_date', 'is', null)
         .lte('expiry_date', fmt(in7Days))
         .order('expiry_date');
-    return List<Map<String, dynamic>>.from(rows);
+
+    // Low-stock items (quantity <= 1, not consumed)
+    final lowStockRows = await Supabase.instance.client
+        .from('pantry_items')
+        .select('item_name, expiry_date, quantity') // ← correct column: item_name
+        .eq('user_id', userId)
+        .eq('is_consumed', false)
+        .lte('quantity', 1);
+
+    // Merge and deduplicate by item_name; expiring rows take priority
+    final seen = <String>{};
+    final result = <Map<String, dynamic>>[];
+
+    for (final row in expiringRows) {
+      final name = row['item_name'] as String? ?? '';
+      if (seen.add(name)) {
+        result.add({...Map<String, dynamic>.from(row), 'low_stock': false});
+      }
+    }
+    for (final row in lowStockRows) {
+      final name = row['item_name'] as String? ?? '';
+      if (seen.add(name)) {
+        result.add({...Map<String, dynamic>.from(row), 'low_stock': true});
+      }
+    }
+    return result;
   }
 
-  // ── UI helpers ────────────────────────────────────────────────────────────
-
-  Widget _buildMealRow(String day, String meal) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Text(day,
-            style:
-            const TextStyle(fontSize: 15.0, color: Color(0xFF003D33))),
-        Text(meal,
-            style: const TextStyle(
-                fontSize: 15.0,
-                color: Color(0xFF003D33),
-                fontWeight: FontWeight.w500)),
-      ],
-    );
-  }
-
-  Widget _buildAlertRow(String item, String status, Color statusColor) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Text(item,
-            style:
-            const TextStyle(fontSize: 15.0, color: Color(0xFF003D33))),
-        Text(status,
-            style: TextStyle(
-                fontSize: 15.0,
-                color: statusColor,
-                fontWeight: FontWeight.w500)),
-      ],
-    );
-  }
+  // ── Label / colour helpers ────────────────────────────────────────────────
 
   String _expiryLabel(String? expiryStr) {
-    if (expiryStr == null) return 'No expiry';
+    if (expiryStr == null || expiryStr.isEmpty) return 'No expiry';
     final expiry = DateTime.tryParse(expiryStr);
     if (expiry == null) return 'No expiry';
     final diff = expiry
@@ -165,11 +197,12 @@ class _HomePageState extends State<HomePage> {
         .inDays;
     if (diff < 0) return 'Expired';
     if (diff == 0) return 'Expires today';
-    return 'Expires in $diff day${diff == 1 ? '' : 's'}';
+    if (diff == 1) return 'Expires tomorrow';
+    return 'Expires in $diff days';
   }
 
   Color _expiryColor(String? expiryStr) {
-    if (expiryStr == null) return Colors.grey;
+    if (expiryStr == null || expiryStr.isEmpty) return Colors.grey;
     final expiry = DateTime.tryParse(expiryStr);
     if (expiry == null) return Colors.grey;
     final diff = expiry
@@ -187,83 +220,48 @@ class _HomePageState extends State<HomePage> {
     if (d == null) return '';
     const days = [
       'Monday', 'Tuesday', 'Wednesday', 'Thursday',
-      'Friday', 'Saturday', 'Sunday'
+      'Friday', 'Saturday', 'Sunday',
     ];
     return days[(d.weekday - 1).clamp(0, 6)];
   }
 
-  // ── Cards ─────────────────────────────────────────────────────────────────
+  // ── Row helpers ───────────────────────────────────────────────────────────
 
-  Widget _buildBudgetCard() {
-    final remaining = _budget - _budgetSpent;
-    final progress = _budget > 0 ? (_budgetSpent / _budget).clamp(0.0, 1.0) : 0.0;
-    return Container(
-      padding: const EdgeInsets.all(20.0),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20.0),
-        border: Border.all(color: const Color(0xFFEEEEEE)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(children: [
-            Container(
-              padding: const EdgeInsets.all(10.0),
-              decoration: BoxDecoration(
-                color: const Color(0xFFE0F2F1),
-                borderRadius: BorderRadius.circular(12.0),
-              ),
-              child: const Icon(Icons.attach_money,
-                  color: Color(0xFF1BAB52), size: 24.0),
-            ),
-            const SizedBox(width: 16.0),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text('Monthly Budget',
-                    style: TextStyle(
-                        fontSize: 18.0,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFF003D33))),
-                Text(
-                  'RM${_budgetSpent.toStringAsFixed(0)} of RM${_budget.toStringAsFixed(0)} spent',
-                  style: const TextStyle(fontSize: 14.0, color: Colors.grey),
-                ),
-              ],
-            ),
-          ]),
-          const SizedBox(height: 20.0),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(8.0),
-            child: LinearProgressIndicator(
-              value: progress,
-              minHeight: 12.0,
-              backgroundColor: const Color(0xFFE8F5E9),
-              valueColor: AlwaysStoppedAnimation<Color>(
-                progress > 0.9
-                    ? const Color(0xFFEF5350)
-                    : const Color(0xFF1BAB52),
-              ),
-            ),
-          ),
-          const SizedBox(height: 12.0),
-          Align(
-            alignment: Alignment.centerRight,
-            child: Text(
-              remaining >= 0
-                  ? 'RM${remaining.toStringAsFixed(0)} remaining'
-                  : 'RM${(-remaining).toStringAsFixed(0)} over budget',
-              style: TextStyle(
-                  fontSize: 14.0,
-                  color: remaining < 0 ? Colors.red : Colors.grey),
-            ),
-          ),
-        ],
-      ),
+  Widget _buildMealRow(String day, String meal) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(day,
+            style: const TextStyle(
+                fontSize: 15.0, color: Color(0xFF003D33))),
+        Text(meal,
+            style: const TextStyle(
+                fontSize: 15.0,
+                color: Color(0xFF003D33),
+                fontWeight: FontWeight.w500)),
+      ],
     );
   }
 
+  Widget _buildAlertRow(String item, String status, Color statusColor) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(item,
+            style: const TextStyle(
+                fontSize: 15.0, color: Color(0xFF003D33))),
+        Text(status,
+            style: TextStyle(
+                fontSize: 15.0,
+                color: statusColor,
+                fontWeight: FontWeight.w500)),
+      ],
+    );
+  }
+
+  // ── Cards ─────────────────────────────────────────────────────────────────
+
+  /// This Week's Meals card — shows up to 3 meals with day labels.
   Widget _buildMealsCard(BuildContext context) {
     final previewMeals = _thisWeekMeals.take(3).toList();
     return Container(
@@ -322,15 +320,16 @@ class _HomePageState extends State<HomePage> {
               ),
             )),
           ] else ...[
-            const SizedBox(height: 16),
+            const SizedBox(height: 16.0),
             const Text('No meals planned this week yet.',
-                style: TextStyle(color: Colors.grey, fontSize: 14)),
+                style: TextStyle(color: Colors.grey, fontSize: 14.0)),
           ],
         ],
       ),
     );
   }
 
+  /// Generic tappable summary card — used for Grocery List.
   Widget _buildSummaryCard({
     required BuildContext context,
     required IconData icon,
@@ -370,8 +369,8 @@ class _HomePageState extends State<HomePage> {
                         fontWeight: FontWeight.bold,
                         color: Color(0xFF003D33))),
                 Text(subtitle,
-                    style:
-                    const TextStyle(fontSize: 14.0, color: Colors.grey)),
+                    style: const TextStyle(
+                        fontSize: 14.0, color: Colors.grey)),
               ],
             ),
           ),
@@ -381,52 +380,166 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  /// Pantry Alerts card — ALWAYS visible.
+  /// Shows up to 3 expiring/low-stock items, or an "All clear" empty state.
   Widget _buildPantryAlertsCard(BuildContext context) {
-    if (_expiringItems.isEmpty) return const SizedBox.shrink();
     final preview = _expiringItems.take(3).toList();
-    return Container(
-      padding: const EdgeInsets.all(20.0),
-      decoration: BoxDecoration(
-        color: const Color(0xFFFFF2F2),
-        borderRadius: BorderRadius.circular(20.0),
-        border: Border.all(color: const Color(0xFFFFEBEE)),
-      ),
-      child: Column(
-        children: [
-          GestureDetector(
-            onTap: () =>
-                AppState.of(context, listen: false).setTabIndex(3),
-            behavior: HitTestBehavior.opaque,
-            child: Row(children: [
+    final hasAlerts = preview.isNotEmpty;
+
+    return GestureDetector(
+      onTap: () => AppState.of(context, listen: false).setTabIndex(3),
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        padding: const EdgeInsets.all(20.0),
+        decoration: BoxDecoration(
+          // Red tint when there are alerts, white when all clear
+          color: hasAlerts
+              ? const Color(0xFFFFF2F2)
+              : Colors.white,
+          borderRadius: BorderRadius.circular(20.0),
+          border: Border.all(
+            color: hasAlerts
+                ? const Color(0xFFFFEBEE)
+                : const Color(0xFFEEEEEE),
+          ),
+        ),
+        child: Column(
+          children: [
+            Row(children: [
               Container(
                 padding: const EdgeInsets.all(10.0),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFFFEBEE),
+                  color: hasAlerts
+                      ? const Color(0xFFFFEBEE)
+                      : const Color(0xFFE8F5E9),
                   borderRadius: BorderRadius.circular(12.0),
                 ),
-                child: const Icon(Icons.error_outline,
-                    color: Color(0xFFEF5350), size: 24.0),
+                child: Icon(
+                  hasAlerts
+                      ? Icons.error_outline
+                      : Icons.check_circle_outline,
+                  color: hasAlerts
+                      ? const Color(0xFFEF5350)
+                      : const Color(0xFF1BAB52),
+                  size: 24.0,
+                ),
               ),
               const SizedBox(width: 16.0),
-              const Expanded(
-                child: Text('Pantry Alerts',
+              Expanded(
+                child: Text(
+                  'Pantry Alerts',
+                  style: TextStyle(
+                    fontSize: 18.0,
+                    fontWeight: FontWeight.bold,
+                    color: hasAlerts
+                        ? const Color(0xFFEF5350)
+                        : const Color(0xFF003D33),
+                  ),
+                ),
+              ),
+              Icon(
+                Icons.chevron_right,
+                color: hasAlerts
+                    ? const Color(0xFFEF5350)
+                    : Colors.grey,
+              ),
+            ]),
+            if (hasAlerts) ...[
+              const SizedBox(height: 16.0),
+              ...preview.map((item) => Padding(
+                padding: const EdgeInsets.only(bottom: 12.0),
+                child: _buildAlertRow(
+                  // ← use 'item_name' — the correct pantry_items column
+                  item['item_name'] as String? ?? '',
+                  (item['low_stock'] == true)
+                      ? 'Running low'
+                      : _expiryLabel(item['expiry_date'] as String?),
+                  (item['low_stock'] == true)
+                      ? const Color(0xFFFF9800)
+                      : _expiryColor(item['expiry_date'] as String?),
+                ),
+              )),
+            ] else ...[
+              const SizedBox(height: 12.0),
+              const Text(
+                'No expiring or low-stock items.',
+                style: TextStyle(color: Colors.grey, fontSize: 14.0),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Monthly Budget card — shows spent vs total with a colour-coded progress bar.
+  Widget _buildBudgetCard() {
+    final remaining = _budget - _budgetSpent;
+    final progress =
+    _budget > 0 ? (_budgetSpent / _budget).clamp(0.0, 1.0) : 0.0;
+    return Container(
+      padding: const EdgeInsets.all(20.0),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20.0),
+        border: Border.all(color: const Color(0xFFEEEEEE)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            Container(
+              padding: const EdgeInsets.all(10.0),
+              decoration: BoxDecoration(
+                color: const Color(0xFFE0F2F1),
+                borderRadius: BorderRadius.circular(12.0),
+              ),
+              child: const Icon(Icons.attach_money,
+                  color: Color(0xFF1BAB52), size: 24.0),
+            ),
+            const SizedBox(width: 16.0),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Monthly Budget',
                     style: TextStyle(
                         fontSize: 18.0,
                         fontWeight: FontWeight.bold,
-                        color: Color(0xFFEF5350))),
-              ),
-              const Icon(Icons.chevron_right, color: Color(0xFFEF5350)),
-            ]),
-          ),
-          const SizedBox(height: 16.0),
-          ...preview.map((item) => Padding(
-            padding: const EdgeInsets.only(bottom: 12.0),
-            child: _buildAlertRow(
-              item['name'] as String? ?? '',
-              _expiryLabel(item['expiry_date'] as String?),
-              _expiryColor(item['expiry_date'] as String?),
+                        color: Color(0xFF003D33))),
+                Text(
+                  'RM${_budgetSpent.toStringAsFixed(0)} of RM${_budget.toStringAsFixed(0)} spent',
+                  style: const TextStyle(
+                      fontSize: 14.0, color: Colors.grey),
+                ),
+              ],
             ),
-          )),
+          ]),
+          const SizedBox(height: 20.0),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(8.0),
+            child: LinearProgressIndicator(
+              value: progress,
+              minHeight: 12.0,
+              backgroundColor: const Color(0xFFE8F5E9),
+              valueColor: AlwaysStoppedAnimation<Color>(
+                progress > 0.9
+                    ? const Color(0xFFEF5350)
+                    : const Color(0xFF1BAB52),
+              ),
+            ),
+          ),
+          const SizedBox(height: 12.0),
+          Align(
+            alignment: Alignment.centerRight,
+            child: Text(
+              remaining >= 0
+                  ? 'RM${remaining.toStringAsFixed(0)} remaining'
+                  : 'RM${(-remaining).toStringAsFixed(0)} over budget',
+              style: TextStyle(
+                  fontSize: 14.0,
+                  color: remaining < 0 ? Colors.red : Colors.grey),
+            ),
+          ),
         ],
       ),
     );
@@ -440,7 +553,7 @@ class _HomePageState extends State<HomePage> {
     final fullName =
         (user?.userMetadata?['full_name'] as String?)?.trim() ?? '';
     final greeting =
-    fullName.isNotEmpty ? 'Welcome, $fullName!' : 'Welcome!';
+    fullName.isNotEmpty ? 'Welcome, $fullName!' : 'Welcome back!';
 
     return Scaffold(
       backgroundColor: const Color(0xFFF9F9F9),
@@ -473,8 +586,11 @@ class _HomePageState extends State<HomePage> {
                     ),
                   )
                 else ...[
+                  // ── This Week's Meals ──────────────────────────────
                   _buildMealsCard(context),
                   const SizedBox(height: 20.0),
+
+                  // ── Grocery List ───────────────────────────────────
                   _buildSummaryCard(
                     context: context,
                     icon: Icons.shopping_cart_outlined,
@@ -486,10 +602,12 @@ class _HomePageState extends State<HomePage> {
                         AppState.of(context, listen: false).setTabIndex(2),
                   ),
                   const SizedBox(height: 20.0),
-                  if (_expiringItems.isNotEmpty)
-                    _buildPantryAlertsCard(context),
-                  if (_expiringItems.isNotEmpty)
-                    const SizedBox(height: 20.0),
+
+                  // ── Pantry Alerts — always shown ───────────────────
+                  _buildPantryAlertsCard(context),
+                  const SizedBox(height: 20.0),
+
+                  // ── Monthly Budget ─────────────────────────────────
                   _buildBudgetCard(),
                   const SizedBox(height: 100.0),
                 ],
@@ -502,8 +620,10 @@ class _HomePageState extends State<HomePage> {
         onPressed: () => ScanPage.show(context),
         backgroundColor: const Color(0xFFFF7043),
         elevation: 4.0,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20.0)),
-        child: const Icon(Icons.qr_code_scanner, color: Colors.white, size: 28.0),
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20.0)),
+        child: const Icon(Icons.qr_code_scanner,
+            color: Colors.white, size: 28.0),
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
     );

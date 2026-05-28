@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../integrations/supabase_service.dart';
 import 'package:go_router/go_router.dart';
 
@@ -15,21 +16,17 @@ class _RegisterPageState extends State<RegisterPage> {
   final _formKey = GlobalKey<FormState>();
 
   bool _isObscure = true;
-
   bool _isConfirmObscure = true;
-
   bool _agreedToTerms = false;
+  bool _isLoading = false;
 
   final TextEditingController nameController = TextEditingController();
-
   final TextEditingController emailController = TextEditingController();
-
   final TextEditingController passwordController = TextEditingController();
-
   final TextEditingController confirmPasswordController =
   TextEditingController();
 
-  bool _isLoading = false;
+  // ── Input field builder ───────────────────────────────────────────────────
 
   Widget _buildInputField({
     required String label,
@@ -85,6 +82,10 @@ class _RegisterPageState extends State<RegisterPage> {
                 width: 1.5,
               ),
             ),
+            errorBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12.0),
+              borderSide: const BorderSide(color: Colors.red),
+            ),
             suffixIcon: isPassword
                 ? IconButton(
               icon: Icon(
@@ -103,6 +104,8 @@ class _RegisterPageState extends State<RegisterPage> {
     );
   }
 
+  // ── Form submission ───────────────────────────────────────────────────────
+
   Future<void> _submitForm() async {
     if (_formKey.currentState?.validate() ?? false) {
       if (!_agreedToTerms) {
@@ -113,9 +116,7 @@ class _RegisterPageState extends State<RegisterPage> {
         );
         return;
       }
-      setState(() {
-        _isLoading = true;
-      });
+      setState(() => _isLoading = true);
       try {
         final response = await SupabaseService().signUp(
           emailController.text.trim(),
@@ -123,18 +124,27 @@ class _RegisterPageState extends State<RegisterPage> {
           data: {'full_name': nameController.text.trim()},
           emailRedirectTo: 'grocerease://login-callback',
         );
-        if (mounted) {
-          if (response.user != null) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text(
-                  'Registration successful! Please check your email for verification.',
-                ),
-                backgroundColor: Color(0xFF1B9E56),
+
+        if (mounted && response.user != null) {
+          // ── Create the user_profiles row immediately after signup ─────────
+          // This ensures budget, dietary preferences, and name are persisted
+          // from the very first login.
+          await Supabase.instance.client.from('user_profiles').upsert({
+            'id': response.user!.id,
+            'full_name': nameController.text.trim(),
+            'budget': 400.0,
+            'dietary_preference': 'None',
+          });
+
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Registration successful! Please check your email for verification.',
               ),
-            );
-            context.pushNamed('login');
-          }
+              backgroundColor: Color(0xFF1B9E56),
+            ),
+          );
+          context.pushNamed('login');
         }
       } catch (e) {
         if (mounted) {
@@ -146,20 +156,19 @@ class _RegisterPageState extends State<RegisterPage> {
           );
         }
       } finally {
-        if (mounted) {
-          setState(() {
-            _isLoading = false;
-          });
-        }
+        if (mounted) setState(() => _isLoading = false);
       }
     }
   }
+
+  // ── Terms dialog ──────────────────────────────────────────────────────────
 
   void _showTermsDialog() {
     showDialog(
       context: context,
       builder: (context) => Dialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24.0)),
+        shape:
+        RoundedRectangleBorder(borderRadius: BorderRadius.circular(24.0)),
         child: Container(
           padding: const EdgeInsets.all(24.0),
           constraints: const BoxConstraints(maxWidth: 500),
@@ -216,9 +225,10 @@ class _RegisterPageState extends State<RegisterPage> {
                       ),
                       const SizedBox(height: 16.0),
                       const Text(
-                        'Welcome to GrocerEase. These Terms and Conditions (“Terms”) govern your use of the GrocerEase mobile application and related services operated by GrocerEase (“we,” “our,” or “us”).\n\n'
-                        'By creating an account or using GrocerEase, you agree to these Terms. If you do not agree, please do not use the application.',
-                        style: TextStyle(fontSize: 14.0, color: Color(0xFF5E6472)),
+                        'Welcome to GrocerEase. These Terms and Conditions ("Terms") govern your use of the GrocerEase mobile application and related services operated by GrocerEase ("we," "our," or "us").\n\n'
+                            'By creating an account or using GrocerEase, you agree to these Terms. If you do not agree, please do not use the application.',
+                        style:
+                        TextStyle(fontSize: 14.0, color: Color(0xFF5E6472)),
                       ),
                       const Divider(height: 32.0),
                       _buildTermsSection('1. About GrocerEase',
@@ -228,7 +238,7 @@ class _RegisterPageState extends State<RegisterPage> {
                       _buildTermsSection('3. User Accounts',
                           'To access certain features, users must create an account using a valid email address and password.\n\nYou are responsible for:\n\n• Maintaining the confidentiality of your account credentials\n• All activities conducted under your account\n• Providing accurate and updated information\n\nYou may delete your account at any time through the application settings or by contacting support.'),
                       _buildTermsSection('4. Acceptable Use',
-                          'Users agree not to:\n\n• Attempt to hack, disrupt, or damage the application\n• Create fake or misleading accounts\n• Upload offensive, abusive, harmful, or inappropriate content\n• Use the application for unlawful purposes\n• Interfere with other users’ experience\n\nWe reserve the right to suspend or permanently ban users who violate these Terms.'),
+                          'Users agree not to:\n\n• Attempt to hack, disrupt, or damage the application\n• Create fake or misleading accounts\n• Upload offensive, abusive, harmful, or inappropriate content\n• Use the application for unlawful purposes\n• Interfere with other users\' experience\n\nWe reserve the right to suspend or permanently ban users who violate these Terms.'),
                       _buildTermsSection('5. User Content',
                           'Users may upload photos within the application.\n\nYou retain ownership of the content you upload. However, by uploading content, you grant GrocerEase a limited, non-exclusive right to store and display the content solely for operating the application.\n\nWe reserve the right to remove any content that violates these Terms or is considered inappropriate.'),
                       _buildTermsSection('6. Privacy and Data Collection',
@@ -238,7 +248,7 @@ class _RegisterPageState extends State<RegisterPage> {
                       _buildTermsSection('8. Intellectual Property',
                           'All application content, branding, logos, features, and software related to GrocerEase are owned by GrocerEase unless otherwise stated.\n\nYou may not:\n\n• Copy\n• Modify\n• Reverse engineer\n• Redistribute\n• Commercially exploit\n\nany part of the application without written permission.'),
                       _buildTermsSection('9. Availability of Service',
-                          'We strive to keep GrocerEase available and functioning properly at all times. However, we do not guarantee uninterrupted or error-free operation.\n\nThe application is provided on an “as is” and “as available” basis.'),
+                          'We strive to keep GrocerEase available and functioning properly at all times. However, we do not guarantee uninterrupted or error-free operation.\n\nThe application is provided on an "as is" and "as available" basis.'),
                       _buildTermsSection('10. Limitation of Responsibility',
                           'While we aim to provide accurate and reliable services, GrocerEase is not responsible for:\n\n• Data loss\n• Inaccurate grocery or budget calculations\n• User-generated content\n• Service interruptions\n• Technical errors\n\nUsers are responsible for verifying important information independently.'),
                       _buildTermsSection('11. Account Suspension and Termination',
@@ -312,6 +322,8 @@ class _RegisterPageState extends State<RegisterPage> {
       ),
     );
   }
+
+  // ── Build ─────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
@@ -390,7 +402,7 @@ class _RegisterPageState extends State<RegisterPage> {
                           return 'Email is required';
                         }
                         if (!RegExp(
-                          '^[\\w-\\.]+@([\\w-]+\\.)+[\\w-]{2,4}\$',
+                          r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$',
                         ).hasMatch(value)) {
                           return 'Enter a valid email';
                         }
@@ -418,8 +430,7 @@ class _RegisterPageState extends State<RegisterPage> {
                       isPassword: true,
                       obscureText: _isConfirmObscure,
                       onToggleVisibility: () => setState(
-                            () => _isConfirmObscure = !_isConfirmObscure,
-                      ),
+                              () => _isConfirmObscure = !_isConfirmObscure),
                       validator: (value) => value != passwordController.text
                           ? 'Passwords do not match'
                           : null,
