@@ -7,8 +7,6 @@ class MealPlanService {
 
   // ── READ ──────────────────────────────────────────────────────────────────
 
-  /// Fetches all meal plans for the current user within [startDate]..[endDate].
-  /// Returns a map keyed by 'yyyy-MM-dd' date strings.
   static Future<Map<String, List<Meal>>> getMealPlansForRange({
     required DateTime startDate,
     required DateTime endDate,
@@ -29,7 +27,7 @@ class MealPlanService {
 
     final result = <String, List<Meal>>{};
     for (final row in (rows as List)) {
-      final dateKey = row['planned_date'] as String; // already 'yyyy-MM-dd'
+      final dateKey = row['planned_date'] as String;
       result.putIfAbsent(dateKey, () => []).add(_fromRow(row));
     }
     return result;
@@ -37,7 +35,6 @@ class MealPlanService {
 
   // ── CREATE ────────────────────────────────────────────────────────────────
 
-  /// Inserts a new meal plan entry and returns the created [Meal] with its id.
   static Future<Meal> addMealPlan({
     required DateTime plannedDate,
     required String mealCategory,
@@ -69,9 +66,31 @@ class MealPlanService {
     return _fromRow(inserted);
   }
 
+  // ── UPDATE ────────────────────────────────────────────────────────────────
+
+  /// Updates an existing meal plan's date and/or category.
+  static Future<Meal> updateMealPlan({
+    required String id,
+    required DateTime plannedDate,
+    required String mealCategory,
+    String? customCategoryName,
+  }) async {
+    final updated = await _supabase
+        .from('meal_plans')
+        .update({
+      'planned_date'         : _fmt(plannedDate),
+      'meal_category'        : mealCategory,
+      'custom_category_name' : customCategoryName,
+    })
+        .eq('id', id)
+        .select()
+        .single();
+
+    return _fromRow(updated);
+  }
+
   // ── DELETE ────────────────────────────────────────────────────────────────
 
-  /// Deletes a meal plan entry by its [id].
   static Future<void> deleteMealPlan(String id) async {
     await _supabase.from('meal_plans').delete().eq('id', id);
   }
@@ -82,8 +101,8 @@ class MealPlanService {
       '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
   static Meal _fromRow(Map<String, dynamic> row) {
-    final category     = row['meal_category'] as String;
-    final customName   = row['custom_category_name'] as String?;
+    final category   = row['meal_category'] as String;
+    final customName = row['custom_category_name'] as String?;
     final displayLabel = category == 'Custom' && customName != null && customName.isNotEmpty
         ? customName
         : category;
