@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 import 'dart:convert';
 import '../services/recipe_service.dart';
 import '../globals/app_state.dart';
+import '../widgets/scan_page_popup.dart';
 
 class SearchRecipes extends StatefulWidget {
   const SearchRecipes({super.key});
@@ -261,7 +262,12 @@ class _SearchRecipesState extends State<SearchRecipes> {
         ),
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: () {},
+        onPressed: () => showModalBottomSheet(
+          context: context,
+          isScrollControlled: true,
+          backgroundColor: Colors.transparent,
+          builder: (_) => const ScanPagePopup(),
+        ),
         backgroundColor: const Color(0xFFFF7043),
         elevation: 4.0,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20.0)),
