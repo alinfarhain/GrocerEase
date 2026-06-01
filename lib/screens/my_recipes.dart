@@ -558,7 +558,10 @@ class _MyRecipesState extends State<MyRecipes> {
               'Get recommended recipe by scanning meal or ingredients',
               iconBgColor: const Color(0xFFE8F5E9),
               iconColor: const Color(0xFF1BAB52),
-              onTap: () => Navigator.pop(context),
+              onTap: () {
+                Navigator.pop(context);      // close Add Recipe sheet first
+                context.push('/scan-meal'); // then open the camera scan screen
+              },
             ),
             const SizedBox(height: 16.0),
             _buildAddOption(
