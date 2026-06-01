@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../services/recipe_service.dart';
 import '../services/meal_plan_service.dart';
 import '../features/scan/scan_written_recipe_sheet.dart';
+import '../widgets/scan_page_popup.dart';
 
 class MyRecipes extends StatefulWidget {
   const MyRecipes({super.key, this.initialEditMode = false});
@@ -1691,9 +1692,9 @@ class _MyRecipesState extends State<MyRecipes> {
               context: context,
               isScrollControlled: true,
               backgroundColor: Colors.transparent,
-              builder: (_) => const ScanWrittenRecipeSheet(),
+              builder: (_) => const ScanPagePopup(),
             );
-            if (mounted) _loadRecipes(); // refresh list after returning
+            if (mounted) _loadRecipes(); // refresh list after scan completes
           },
           backgroundColor: const Color(0xFFFF7043),
           elevation: 4.0,

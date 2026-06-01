@@ -13,8 +13,6 @@ class SearchRecipes extends StatefulWidget {
 }
 
 class _SearchRecipesState extends State<SearchRecipes> {
-  // API key is managed in RecipeService.spoonacularApiKey
-
   final TextEditingController _searchController = TextEditingController();
   List<Map<String, dynamic>> _searchResults = [];
   bool _isSearching = false;
@@ -30,6 +28,10 @@ class _SearchRecipesState extends State<SearchRecipes> {
   final TextEditingController _servingsController = TextEditingController();
   final TextEditingController _caloriesController = TextEditingController();
 
+  // ── Save state — keyed by recipe id string ────────────────────────────────
+  final Map<String, bool> _savingMap = {};
+  final Set<String> _savedIds = {};
+
   @override
   void dispose() {
     _searchController.dispose();
@@ -39,15 +41,47 @@ class _SearchRecipesState extends State<SearchRecipes> {
     super.dispose();
   }
 
+  // ── SAVE ──────────────────────────────────────────────────────────────────
+
+  Future<void> _saveRecipe(Map<String, dynamic> recipe) async {
+    final id = recipe['id']?.toString() ?? '';
+    if (_savedIds.contains(id) || _savingMap[id] == true) return;
+
+    setState(() => _savingMap[id] = true);
+
+    try {
+      // RecipeService.saveSearchedRecipe uses the correct column names:
+      // difficulty_level, tools_required, cooking_steps, etc.
+      await RecipeService.saveSearchedRecipe(recipe);
+
+      if (mounted) {
+        setState(() {
+          _savedIds.add(id);
+          _savingMap.remove(id);
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Recipe saved to My Recipes!'),
+            backgroundColor: Color(0xFF1BAB52),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _savingMap.remove(id));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to save: $e'),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    }
+  }
+
   // ── API CALL ──────────────────────────────────────────────────────────────
-  // WHY 2 STEPS:
-  // complexSearch does NOT reliably return equipment (tools) inside
-  // analyzedInstructions steps, even with addRecipeInformation=true.
-  // Equipment data only comes from the individual/bulk detail endpoint.
-  // So we:
-  //   Step 1 → complexSearch           → get recipe IDs (1 API point)
-  //   Step 2 → informationBulk?ids=... → get FULL details for all (1 pt each)
-  // Total: ~11 points per search (10 results). Free plan = ~13 searches/day.
 
   Future<void> _searchRecipes() async {
     final query = _searchController.text.trim();
@@ -63,12 +97,12 @@ class _SearchRecipesState extends State<SearchRecipes> {
     });
 
     try {
-      // ── Step 1: Search for recipe IDs ──────────────────────────────────
+      // Step 1: Search for recipe IDs
       final searchUri = Uri.parse(
         'https://api.spoonacular.com/recipes/complexSearch'
             '?query=${Uri.encodeComponent(query)}'
             '&apiKey=${RecipeService.spoonacularApiKey}'
-            '&number=10', // 10 results → 11 API points total (affordable on free plan)
+            '&number=10',
       );
 
       final searchResponse = await http
@@ -110,9 +144,7 @@ class _SearchRecipesState extends State<SearchRecipes> {
         return;
       }
 
-      // ── Step 2: Bulk fetch FULL details (tools, calories, steps) ───────
-      // This endpoint reliably returns analyzedInstructions with equipment
-      // AND nutrition data — which complexSearch does NOT.
+      // Step 2: Bulk fetch FULL details (tools, calories, steps)
       final ids = basicResults
           .map((r) => (r as Map<String, dynamic>)['id'].toString())
           .join(',');
@@ -141,7 +173,6 @@ class _SearchRecipesState extends State<SearchRecipes> {
           _isSearching = false;
         });
       } else {
-        // Fallback: show basic results without tools/calories
         setState(() {
           _searchResults = basicResults
               .map((meal) => RecipeService.mapSpoonacularSearchResult(
@@ -158,12 +189,6 @@ class _SearchRecipesState extends State<SearchRecipes> {
         _isSearching = false;
       });
     }
-  }
-
-  // ── MAP DELEGATE ──────────────────────────────────────────────────────────
-
-  Map<String, dynamic> _mapSpoonacularRecipe(Map<String, dynamic> meal) {
-    return RecipeService.mapSpoonacularSearchResult(meal);
   }
 
   // ── FILTERS ───────────────────────────────────────────────────────────────
@@ -246,13 +271,14 @@ class _SearchRecipesState extends State<SearchRecipes> {
     );
   }
 
+  // ── HEADER ────────────────────────────────────────────────────────────────
+
   Widget _buildHeader() {
     return Padding(
       padding: const EdgeInsets.fromLTRB(24.0, 24.0, 24.0, 0.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // ── Top: Plan title ───────────────────────────────────────────
           const Text(
             'Plan',
             style: TextStyle(
@@ -268,7 +294,7 @@ class _SearchRecipesState extends State<SearchRecipes> {
           ),
           const SizedBox(height: 24.0),
 
-          // ── Meal Plan | My Recipes top tabs ───────────────────────────
+          // Meal Plan | My Recipes top tabs
           Container(
             height: 50.0,
             padding: const EdgeInsets.all(4.0),
@@ -278,12 +304,11 @@ class _SearchRecipesState extends State<SearchRecipes> {
             ),
             child: Row(
               children: [
-                // Meal Plan — inactive, taps back to plan page
                 Expanded(
                   child: GestureDetector(
                     onTap: () {
-                      context.pop(); // back to my_recipes
-                      context.pop(); // back to plan page
+                      context.pop();
+                      context.pop();
                     },
                     child: Container(
                       decoration: BoxDecoration(
@@ -301,7 +326,6 @@ class _SearchRecipesState extends State<SearchRecipes> {
                     ),
                   ),
                 ),
-                // My Recipes — active (white pill)
                 Expanded(
                   child: Container(
                     decoration: BoxDecoration(
@@ -323,7 +347,6 @@ class _SearchRecipesState extends State<SearchRecipes> {
           ),
           const SizedBox(height: 32.0),
 
-          // ── My Recipes title row — NO edit button ─────────────────────
           const Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -343,7 +366,7 @@ class _SearchRecipesState extends State<SearchRecipes> {
           ),
           const SizedBox(height: 24.0),
 
-          // ── My Saved Recipes | Search Recipes sub-tabs ────────────────
+          // My Saved Recipes | Search Recipes sub-tabs
           Container(
             height: 44.0,
             padding: const EdgeInsets.all(4.0),
@@ -353,7 +376,6 @@ class _SearchRecipesState extends State<SearchRecipes> {
             ),
             child: Row(
               children: [
-                // My Saved Recipes — inactive, taps back
                 Expanded(
                   child: GestureDetector(
                     onTap: () => context.pop(),
@@ -373,7 +395,6 @@ class _SearchRecipesState extends State<SearchRecipes> {
                     ),
                   ),
                 ),
-                // Search Recipes — active (white pill)
                 Expanded(
                   child: Container(
                     decoration: BoxDecoration(
@@ -398,6 +419,8 @@ class _SearchRecipesState extends State<SearchRecipes> {
       ),
     );
   }
+
+  // ── SEARCH BAR ────────────────────────────────────────────────────────────
 
   Widget _buildSearchBar() {
     return Row(
@@ -429,8 +452,7 @@ class _SearchRecipesState extends State<SearchRecipes> {
                     onChanged: (_) => setState(() {}),
                     decoration: const InputDecoration(
                       hintText: 'Try "nasi lemak", "chicken curry"...',
-                      hintStyle:
-                      TextStyle(color: Colors.grey, fontSize: 14.0),
+                      hintStyle: TextStyle(color: Colors.grey, fontSize: 14.0),
                       border: InputBorder.none,
                     ),
                   ),
@@ -457,7 +479,9 @@ class _SearchRecipesState extends State<SearchRecipes> {
                     width: 42.0,
                     height: 42.0,
                     decoration: BoxDecoration(
-                      color: _isSearching ? Colors.grey : const Color(0xFF1BAB52),
+                      color: _isSearching
+                          ? Colors.grey
+                          : const Color(0xFF1BAB52),
                       borderRadius: BorderRadius.circular(12.0),
                     ),
                     child: _isSearching
@@ -487,12 +511,15 @@ class _SearchRecipesState extends State<SearchRecipes> {
               borderRadius: BorderRadius.circular(16.0),
             ),
             child: Icon(Icons.tune,
-                color: showFilters ? Colors.white : const Color(0xFF003D33)),
+                color:
+                showFilters ? Colors.white : const Color(0xFF003D33)),
           ),
         ),
       ],
     );
   }
+
+  // ── FILTERS ───────────────────────────────────────────────────────────────
 
   Widget _buildFilterForm() {
     return Container(
@@ -573,7 +600,8 @@ class _SearchRecipesState extends State<SearchRecipes> {
                   ),
                   child: const Text('Apply Filters',
                       style: TextStyle(
-                          color: Colors.white, fontWeight: FontWeight.bold)),
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold)),
                 ),
               ),
             ],
@@ -622,25 +650,30 @@ class _SearchRecipesState extends State<SearchRecipes> {
       onTap: () => setState(
               () => selectedDifficulty = isSelected ? null : difficulty),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14.0, vertical: 8.0),
+        padding:
+        const EdgeInsets.symmetric(horizontal: 14.0, vertical: 8.0),
         decoration: BoxDecoration(
           color: isSelected
               ? const Color(0xFF1BAB52)
               : const Color(0xFFE8F5E9).withValues(alpha: 0.4),
           borderRadius: BorderRadius.circular(10.0),
           border: Border.all(
-              color: isSelected ? Colors.transparent : const Color(0xFFEEEEEE)),
+              color: isSelected
+                  ? Colors.transparent
+                  : const Color(0xFFEEEEEE)),
         ),
         child: Text(difficulty,
             style: TextStyle(
-                color: isSelected ? Colors.white : const Color(0xFF003D33),
+                color: isSelected
+                    ? Colors.white
+                    : const Color(0xFF003D33),
                 fontWeight: FontWeight.w600,
                 fontSize: 13.0)),
       ),
     );
   }
 
-  // ── States ────────────────────────────────────────────────────────────────
+  // ── STATES ────────────────────────────────────────────────────────────────
 
   Widget _buildLoadingState() {
     return Center(
@@ -651,7 +684,8 @@ class _SearchRecipesState extends State<SearchRecipes> {
             const CircularProgressIndicator(color: Color(0xFF1BAB52)),
             const SizedBox(height: 20.0),
             Text('Searching for "${_searchController.text}"...',
-                style: const TextStyle(color: Colors.grey, fontSize: 14.0)),
+                style:
+                const TextStyle(color: Colors.grey, fontSize: 14.0)),
           ],
         ),
       ),
@@ -700,8 +734,12 @@ class _SearchRecipesState extends State<SearchRecipes> {
 
   Widget _buildEmptyState() {
     final suggestions = [
-      'Nasi Lemak', 'Chicken Curry', 'Fried Rice',
-      'Rendang', 'Pasta', 'Sushi',
+      'Nasi Lemak',
+      'Chicken Curry',
+      'Fried Rice',
+      'Rendang',
+      'Pasta',
+      'Sushi',
     ];
     return Center(
       child: Container(
@@ -745,7 +783,8 @@ class _SearchRecipesState extends State<SearchRecipes> {
                       color: Colors.white,
                       borderRadius: BorderRadius.circular(20.0),
                       border: Border.all(
-                          color: const Color(0xFF1BAB52).withValues(alpha: 0.3)),
+                          color: const Color(0xFF1BAB52)
+                              .withValues(alpha: 0.3)),
                     ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
@@ -794,12 +833,15 @@ class _SearchRecipesState extends State<SearchRecipes> {
     );
   }
 
+  // ── RESULTS ───────────────────────────────────────────────────────────────
+
   Widget _buildResultsList(List<Map<String, dynamic>> results) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
+          padding:
+          const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
           decoration: BoxDecoration(
             color: const Color(0xFFF5F5F5),
             borderRadius: BorderRadius.circular(8.0),
@@ -810,7 +852,8 @@ class _SearchRecipesState extends State<SearchRecipes> {
               const SizedBox(width: 6.0),
               Text(
                 'Showing ${results.length} results powered by Spoonacular',
-                style: const TextStyle(color: Colors.grey, fontSize: 12.0),
+                style:
+                const TextStyle(color: Colors.grey, fontSize: 12.0),
               ),
             ],
           ),
@@ -822,6 +865,7 @@ class _SearchRecipesState extends State<SearchRecipes> {
   }
 
   Widget _buildRecipeCard(Map<String, dynamic> recipe) {
+    final id = recipe['id']?.toString() ?? '';
     final cookTime = recipe['cookTimeMinutes'] as int? ?? 0;
     final servings = recipe['servings'] as int? ?? 4;
     final difficulty = recipe['difficulty'] as String? ?? 'Medium';
@@ -829,6 +873,9 @@ class _SearchRecipesState extends State<SearchRecipes> {
     final tools = recipe['tools'] as List? ?? [];
     final calories = recipe['caloriesPerServing'] as int? ?? 0;
     final budget = recipe['budget']?.toString() ?? '0';
+
+    final isSaved = _savedIds.contains(id);
+    final isSaving = _savingMap[id] == true;
 
     return GestureDetector(
       onTap: () => context.pushNamed(
@@ -851,11 +898,11 @@ class _SearchRecipesState extends State<SearchRecipes> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Image
+            // ── Image ────────────────────────────────────────────────
             if (recipe['image'] != null)
               ClipRRect(
-                borderRadius:
-                const BorderRadius.vertical(top: Radius.circular(20.0)),
+                borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(20.0)),
                 child: Image.network(
                   recipe['image'] as String,
                   height: 160.0,
@@ -870,12 +917,13 @@ class _SearchRecipesState extends State<SearchRecipes> {
                   ),
                 ),
               ),
+
             Padding(
               padding: const EdgeInsets.all(16.0),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Name
+                  // ── Name row + Save button ────────────────────────
                   Row(
                     children: [
                       Expanded(
@@ -887,31 +935,60 @@ class _SearchRecipesState extends State<SearchRecipes> {
                               color: Color(0xFF003D33)),
                         ),
                       ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 8.0, vertical: 5.0),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFE8F5E9),
-                          borderRadius: BorderRadius.circular(8.0),
-                        ),
-                        child: const Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.bookmark_add_outlined,
-                                size: 14.0, color: Color(0xFF1BAB52)),
-                            SizedBox(width: 4.0),
-                            Text('Save',
+                      // Save button — absorbs tap so it doesn't open recipe
+                      GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: () => _saveRecipe(recipe),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 10.0, vertical: 6.0),
+                          decoration: BoxDecoration(
+                            color: isSaved
+                                ? const Color(0xFF1BAB52)
+                                : const Color(0xFFE8F5E9),
+                            borderRadius: BorderRadius.circular(8.0),
+                          ),
+                          child: isSaving
+                              ? const SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Color(0xFF1BAB52),
+                            ),
+                          )
+                              : Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                isSaved
+                                    ? Icons.bookmark
+                                    : Icons.bookmark_add_outlined,
+                                size: 14.0,
+                                color: isSaved
+                                    ? Colors.white
+                                    : const Color(0xFF1BAB52),
+                              ),
+                              const SizedBox(width: 4.0),
+                              Text(
+                                isSaved ? 'Saved' : 'Save',
                                 style: TextStyle(
                                     fontSize: 12.0,
-                                    color: Color(0xFF1BAB52),
-                                    fontWeight: FontWeight.w600)),
-                          ],
+                                    fontWeight: FontWeight.w600,
+                                    color: isSaved
+                                        ? Colors.white
+                                        : const Color(0xFF1BAB52)),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                     ],
                   ),
+
                   const SizedBox(height: 8.0),
-                  // Difficulty + meal type
+
+                  // ── Difficulty + meal type ────────────────────────
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
@@ -934,8 +1011,10 @@ class _SearchRecipesState extends State<SearchRecipes> {
                                 color: Colors.grey, fontSize: 12.0)),
                     ],
                   ),
+
                   const SizedBox(height: 12.0),
-                  // Stats
+
+                  // ── Stats row ─────────────────────────────────────
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
@@ -943,9 +1022,11 @@ class _SearchRecipesState extends State<SearchRecipes> {
                       _buildStat(Icons.attach_money,
                           budget == '0' ? 'N/A' : 'RM$budget'),
                       _buildStat(Icons.people_outline, '$servings'),
-                      _buildStat(Icons.local_fire_department_outlined,
+                      _buildStat(
+                          Icons.local_fire_department_outlined,
                           calories == 0 ? 'N/A' : '$calories kcal'),
-                      _buildStat(Icons.handyman_outlined,
+                      _buildStat(
+                          Icons.handyman_outlined,
                           '${tools.length} tool${tools.length == 1 ? '' : 's'}'),
                     ],
                   ),
@@ -964,10 +1045,13 @@ class _SearchRecipesState extends State<SearchRecipes> {
       children: [
         Icon(icon, size: 14.0, color: Colors.grey),
         const SizedBox(width: 3.0),
-        Text(value, style: const TextStyle(fontSize: 11.0, color: Colors.grey)),
+        Text(value,
+            style: const TextStyle(fontSize: 11.0, color: Colors.grey)),
       ],
     );
   }
+
+  // ── BOTTOM NAV ────────────────────────────────────────────────────────────
 
   Widget _buildBottomNav(BuildContext context) {
     return Container(
