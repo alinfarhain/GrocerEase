@@ -6,6 +6,7 @@ import '../models/grocery_item.dart';
 import '../widgets/grocery_item_tile.dart';
 import '../widgets/progress_card.dart';
 import '../widgets/add_item_sheet.dart';
+import '../widgets/scan_page_popup.dart';
 import '../services/grocery_service.dart';
 
 class GroceryListScreen extends StatefulWidget {
@@ -15,9 +16,7 @@ class GroceryListScreen extends StatefulWidget {
   const GroceryListScreen({
     super.key,
     this.currency = const AppCurrency(
-        code: 'MYR',
-        symbol: 'RM ',
-        label: 'Malaysian Ringgit (RM)'),
+        code: 'MYR', symbol: 'RM ', label: 'Malaysian Ringgit (RM)'),
     this.dietaryPreference = 'None',
   });
 
@@ -31,11 +30,9 @@ class _GroceryListScreenState extends State<GroceryListScreen>
   bool _isEditMode = false;
   bool _isLoading = true;
 
-  /// All items fetched from Supabase — rebuilt into category/recipe groups locally.
   List<Map<String, dynamic>> _rawItems = [];
 
-  // ── Map raw Supabase row → GroceryItem ────────────────────────────────────
-
+  // ── Map raw row → GroceryItem ─────────────────────────────────────────────
   GroceryItem _toGroceryItem(Map<String, dynamic> raw) {
     return GroceryItem(
       id: raw['id'] as String,
@@ -48,7 +45,6 @@ class _GroceryListScreenState extends State<GroceryListScreen>
       recipe: raw['recipe'] as String?,
       dietaryTags: List<String>.from(raw['dietaryTags'] ?? []),
       isChecked: raw['isChecked'] as bool? ?? false,
-      // ── New smart-pricing fields ──────────────────────────────────────────
       suggestedPurchaseUnit: raw['suggestedPurchaseUnit'] as String?,
       priceSource: raw['priceSource'] as String?,
       pantryShortageAmount:
@@ -56,8 +52,7 @@ class _GroceryListScreenState extends State<GroceryListScreen>
     );
   }
 
-  // ── Computed categories from raw items ────────────────────────────────────
-
+  // ── Computed categories ───────────────────────────────────────────────────
   List<GroceryCategory> get _categories {
     final map = <String, List<GroceryItem>>{};
     for (final raw in _rawItems) {
@@ -70,7 +65,6 @@ class _GroceryListScreenState extends State<GroceryListScreen>
   }
 
   // ── Lifecycle ─────────────────────────────────────────────────────────────
-
   @override
   void initState() {
     super.initState();
@@ -78,7 +72,6 @@ class _GroceryListScreenState extends State<GroceryListScreen>
     _loadItems();
   }
 
-  /// Fetches the user's budget from user_profiles and syncs it into AppState.
   Future<void> _loadBudget() async {
     final userId = Supabase.instance.client.auth.currentUser?.id;
     if (userId == null) return;
@@ -111,7 +104,6 @@ class _GroceryListScreenState extends State<GroceryListScreen>
   }
 
   // ── Computed helpers ──────────────────────────────────────────────────────
-
   List<GroceryItem> get _allItems =>
       _categories.expand((c) => c.items).toList();
   int get _checkedCount => _allItems.where((i) => i.isChecked).length;
@@ -134,8 +126,7 @@ class _GroceryListScreenState extends State<GroceryListScreen>
       ..sort((a, b) => a.name.compareTo(b.name));
   }
 
-  // ── Mutations — all persist to Supabase ───────────────────────────────────
-
+  // ── Mutations ─────────────────────────────────────────────────────────────
   Future<void> _toggleItem(GroceryItem item) async {
     final newVal = !item.isChecked;
     setState(() {
@@ -185,18 +176,44 @@ class _GroceryListScreenState extends State<GroceryListScreen>
       if (mounted) setState(() => _rawItems.add(newItem));
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-              content: Text('Failed to add item: $e'),
-              backgroundColor: Colors.red),
-        );
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text('Failed to add item: $e'),
+            backgroundColor: Colors.red));
       }
     }
   }
 
   // ── Edit mode ─────────────────────────────────────────────────────────────
-
   void _toggleEditMode() => setState(() => _isEditMode = !_isEditMode);
+
+  // Delete all currently shopping-checked items
+  Future<void> _deleteCheckedItems() async {
+    final checkedItems = _allItems.where((i) => i.isChecked).toList();
+    if (checkedItems.isEmpty) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete Selected'),
+        content: Text(
+            'Delete ${checkedItems.length} checked item${checkedItems.length > 1 ? 's' : ''}?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Delete',
+                style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    for (final item in checkedItems) {
+      await _deleteItem(item);
+    }
+  }
 
   String _calcPPU(double price, double? qty, String? unit) {
     if (qty == null || qty <= 0 || unit == null || unit.trim().isEmpty) {
@@ -232,8 +249,8 @@ class _GroceryListScreenState extends State<GroceryListScreen>
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (ctx) => Padding(
-        padding: EdgeInsets.only(
-            bottom: MediaQuery.of(ctx).viewInsets.bottom),
+        padding:
+        EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
         child: Container(
           decoration: const BoxDecoration(
             color: Colors.white,
@@ -245,7 +262,6 @@ class _GroceryListScreenState extends State<GroceryListScreen>
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Drag handle
               Center(
                 child: Container(
                   width: 40,
@@ -261,16 +277,13 @@ class _GroceryListScreenState extends State<GroceryListScreen>
                   style: TextStyle(
                       fontSize: 18, fontWeight: FontWeight.w700)),
               const SizedBox(height: 20),
-
-              // Name field
               _editField('Item Name', nameCtrl),
               const SizedBox(height: 12),
-
-              // Quantity + unit row
               Row(
                 children: [
-                  Expanded(child: _editField('Amount', qtyCtrl,
-                      keyboardType: TextInputType.number)),
+                  Expanded(
+                      child: _editField('Amount', qtyCtrl,
+                          keyboardType: TextInputType.number)),
                   const SizedBox(width: 12),
                   Expanded(
                       child: _editField('Unit', unitCtrl,
@@ -278,14 +291,10 @@ class _GroceryListScreenState extends State<GroceryListScreen>
                 ],
               ),
               const SizedBox(height: 12),
-
-              // Price field
               _editField('Price ($_sym)', priceCtrl,
                   keyboardType: const TextInputType.numberWithOptions(
                       decimal: true)),
               const SizedBox(height: 6),
-
-              // Live price-per-unit preview
               ValueListenableBuilder<String>(
                 valueListenable: ppuNotifier,
                 builder: (_, ppu, __) => ppu.isEmpty
@@ -293,13 +302,10 @@ class _GroceryListScreenState extends State<GroceryListScreen>
                     : Text(
                   'Price per unit: $ppu',
                   style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.grey.shade500),
+                      fontSize: 12, color: Colors.grey.shade500),
                 ),
               ),
               const SizedBox(height: 20),
-
-              // Save button
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
@@ -327,7 +333,6 @@ class _GroceryListScreenState extends State<GroceryListScreen>
                         quantityAmount: qty > 0 ? qty : null,
                         unit: u.isNotEmpty ? u : null,
                         price: p,
-                        // Mark as user-edited so badge updates to "User price"
                         priceSource: 'User',
                       );
                       if (mounted) {
@@ -404,7 +409,6 @@ class _GroceryListScreenState extends State<GroceryListScreen>
   }
 
   // ── Share ─────────────────────────────────────────────────────────────────
-
   void _shareList() {
     final budget = AppState.of(context, listen: false).budget;
     final buf = StringBuffer();
@@ -454,66 +458,117 @@ class _GroceryListScreenState extends State<GroceryListScreen>
   }
 
   // ── Build ─────────────────────────────────────────────────────────────────
-
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
       return const Scaffold(
         backgroundColor: Color(0xFFF3F8F3),
         body: Center(
-          child: CircularProgressIndicator(color: Color(0xFF2E7D32)),
-        ),
+            child: CircularProgressIndicator(color: Color(0xFF2E7D32))),
       );
     }
 
     return Scaffold(
       backgroundColor: const Color(0xFFF3F8F3),
-      body: SafeArea(
-        child: RefreshIndicator(
-          onRefresh: _loadItems,
-          color: const Color(0xFF2E7D32),
-          child: Column(children: [
-            _buildHeader(),
-            Expanded(
-              child: ListView(
-                padding:
-                const EdgeInsets.fromLTRB(20, 8, 20, 20),
-                children: [
-                  ProgressCard(
-                    checkedCount: _checkedCount,
-                    totalCount: _totalCount,
-                    spentTotal: _spentTotal,
-                    budget: AppState.of(context).budget,
-                    currencySymbol: _sym,
+      body: Stack(
+        children: [
+          // ── Main scrollable content ──────────────────────────────────
+          SafeArea(
+            child: RefreshIndicator(
+              onRefresh: _loadItems,
+              color: const Color(0xFF2E7D32),
+              child: Column(children: [
+                _buildHeader(),
+                Expanded(
+                  child: ListView(
+                    padding:
+                    const EdgeInsets.fromLTRB(20, 8, 20, 88),
+                    children: [
+                      ProgressCard(
+                        checkedCount: _checkedCount,
+                        totalCount: _totalCount,
+                        spentTotal: _spentTotal,
+                        budget: AppState.of(context).budget,
+                        currencySymbol: _sym,
+                      ),
+                      const SizedBox(height: 16),
+                      _buildToggle(),
+                      const SizedBox(height: 16),
+                      ...(_showByRecipe
+                          ? _buildRecipeList()
+                          : _buildCategoryList()),
+                    ],
                   ),
-                  const SizedBox(height: 16),
-                  _buildToggle(),
-                  const SizedBox(height: 16),
-                  ...(_showByRecipe
-                      ? _buildRecipeList()
-                      : _buildCategoryList()),
-                  const SizedBox(height: 8),
-                  _buildAddCustomButton(),
-                  const SizedBox(height: 80),
+                ),
+              ]),
+            ),
+          ),
+
+          // ── Floating Add Custom Item button ──────────────────────────
+          Positioned(
+            bottom: 0,
+            left: 0,
+            right: 0,
+            child: Container(
+              padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.08),
+                    blurRadius: 12,
+                    offset: const Offset(0, -3),
+                  ),
                 ],
               ),
+              child: SafeArea(
+                top: false,
+                child: SizedBox(
+                  width: double.infinity,
+                  height: 52,
+                  child: ElevatedButton.icon(
+                    onPressed: _showAddItemSheet,
+                    icon: const Icon(Icons.add, color: Colors.white),
+                    label: const Text(
+                      'Add Custom Item',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF2E7D32),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14)),
+                      elevation: 0,
+                    ),
+                  ),
+                ),
+              ),
             ),
-          ]),
-        ),
+          ),
+        ],
       ),
+      // ── FAB — opens Smart Scan popup ──────────────────────────────────
       floatingActionButton: FloatingActionButton(
-        onPressed: _showAddItemSheet,
-        backgroundColor: const Color(0xFFE86E28),
-        shape: const CircleBorder(),
+        onPressed: () => showModalBottomSheet(
+          context: context,
+          isScrollControlled: true,
+          backgroundColor: Colors.transparent,
+          builder: (_) => const ScanPagePopup(),
+        ),
+        backgroundColor: const Color(0xFFFF7043),
+        shape:
+        RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         elevation: 4,
-        child:
-        const Icon(Icons.crop_free, color: Colors.white, size: 26),
+        child: const Icon(Icons.qr_code_scanner,
+            color: Colors.white, size: 28),
       ),
     );
   }
 
   // ── Header ────────────────────────────────────────────────────────────────
-
   Widget _buildHeader() {
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 16, 16, 8),
@@ -536,7 +591,7 @@ class _GroceryListScreenState extends State<GroceryListScreen>
               const SizedBox(height: 2),
               Text(
                 _isEditMode
-                    ? 'Tap ✏️ on an item to edit'
+                    ? 'Tap 🗑 to delete · Tap ✏️ to edit'
                     : '$_remainingCount items remaining',
                 style: TextStyle(
                   fontSize: 13,
@@ -550,6 +605,39 @@ class _GroceryListScreenState extends State<GroceryListScreen>
         ),
         _headerBtn(Icons.share_outlined, 'Share', _shareList),
         const SizedBox(width: 8),
+        // Delete Selected — visible in edit mode when items are checked
+        if (_isEditMode && _checkedCount > 0) ...[
+          GestureDetector(
+            onTap: _deleteCheckedItems,
+            child: Container(
+              decoration: BoxDecoration(
+                color: Colors.red.shade50,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: Colors.red.shade200),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 14, vertical: 8),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.delete_sweep_outlined,
+                        size: 18, color: Colors.red.shade700),
+                    const SizedBox(width: 4),
+                    Text(
+                      'Delete ($_checkedCount)',
+                      style: TextStyle(
+                          color: Colors.red.shade700,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 13),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+        ],
         _headerBtn(
           _isEditMode ? Icons.check_outlined : Icons.edit_outlined,
           _isEditMode ? 'Done' : 'Edit',
@@ -570,9 +658,8 @@ class _GroceryListScreenState extends State<GroceryListScreen>
       }) {
     return Container(
       decoration: BoxDecoration(
-        color: active
-            ? const Color(0xFF2E7D32)
-            : const Color(0xFFE8F5E9),
+        color:
+        active ? const Color(0xFF2E7D32) : const Color(0xFFE8F5E9),
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
             color: active
@@ -599,9 +686,8 @@ class _GroceryListScreenState extends State<GroceryListScreen>
                   const SizedBox(width: 4),
                   Text(label,
                       style: TextStyle(
-                        color: active
-                            ? Colors.white
-                            : const Color(0xFF2E7D32),
+                        color:
+                        active ? Colors.white : const Color(0xFF2E7D32),
                         fontWeight: FontWeight.w600,
                         fontSize: 14,
                       )),
@@ -614,8 +700,7 @@ class _GroceryListScreenState extends State<GroceryListScreen>
     );
   }
 
-  // ── Toggle (All Items / By Recipe) ────────────────────────────────────────
-
+  // ── Toggle ────────────────────────────────────────────────────────────────
   Widget _buildToggle() {
     return Container(
       height: 44,
@@ -655,15 +740,13 @@ class _GroceryListScreenState extends State<GroceryListScreen>
             children: [
               Icon(icon,
                   size: 16,
-                  color: sel
-                      ? const Color(0xFF1A1A1A)
-                      : Colors.grey.shade500),
+                  color:
+                  sel ? const Color(0xFF1A1A1A) : Colors.grey.shade500),
               const SizedBox(width: 6),
               Text(label,
                   style: TextStyle(
                     fontSize: 14,
-                    fontWeight:
-                    sel ? FontWeight.w600 : FontWeight.w400,
+                    fontWeight: sel ? FontWeight.w600 : FontWeight.w400,
                     color: sel
                         ? const Color(0xFF1A1A1A)
                         : Colors.grey.shade500,
@@ -676,7 +759,6 @@ class _GroceryListScreenState extends State<GroceryListScreen>
   }
 
   // ── List builders ─────────────────────────────────────────────────────────
-
   List<Widget> _buildCategoryList() {
     final out = <Widget>[];
     for (final cat in _categories) {
@@ -754,8 +836,7 @@ class _GroceryListScreenState extends State<GroceryListScreen>
                 color: Color(0xFF2E7D32))),
       ),
       Container(
-        padding:
-        const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
         decoration: BoxDecoration(
           color: const Color(0xFFE8F5E9),
           borderRadius: BorderRadius.circular(20),
@@ -792,26 +873,6 @@ class _GroceryListScreenState extends State<GroceryListScreen>
       currencySymbol: _sym,
       userDietaryPreference: _diet,
       onEdit: _isEditMode ? () => _showEditItemSheet(item) : null,
-    );
-  }
-
-  Widget _buildAddCustomButton() {
-    return OutlinedButton.icon(
-      onPressed: _showAddItemSheet,
-      icon: const Icon(Icons.add, size: 18, color: Color(0xFF2E7D32)),
-      label: const Text('Add custom item',
-          style: TextStyle(
-              color: Color(0xFF2E7D32),
-              fontWeight: FontWeight.w600,
-              fontSize: 14)),
-      style: OutlinedButton.styleFrom(
-        side: const BorderSide(
-            color: Color(0xFF2E7D32), width: 1.4),
-        shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14)),
-        padding: const EdgeInsets.symmetric(
-            horizontal: 20, vertical: 12),
-      ),
     );
   }
 }

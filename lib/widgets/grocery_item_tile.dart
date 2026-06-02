@@ -3,6 +3,7 @@
 //   • Shows suggestedPurchaseUnit as subtitle ("Buy: 500g chicken tray")
 //   • Shows priceSource as a small badge ("AI Est." / "Estimated" / "User")
 //   • Pantry shortage note when pantryShortageAmount is set
+//   • In edit mode (onEdit != null): shows delete button to the LEFT of the edit pencil
 
 import 'package:flutter/material.dart';
 import '../models/grocery_item.dart';
@@ -14,7 +15,7 @@ class GroceryItemTile extends StatelessWidget {
   final String currencySymbol;
   final String userDietaryPreference;
 
-  /// When non-null, an edit icon is shown. Tapping it calls this.
+  /// When non-null, edit mode is active — both delete and edit icons are shown.
   final VoidCallback? onEdit;
 
   const GroceryItemTile({
@@ -44,7 +45,8 @@ class GroceryItemTile extends StatelessWidget {
           color: Colors.red.shade400,
           borderRadius: BorderRadius.circular(16),
         ),
-        child: const Icon(Icons.delete_outline, color: Colors.white, size: 24),
+        child:
+        const Icon(Icons.delete_outline, color: Colors.white, size: 24),
       ),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 250),
@@ -124,6 +126,30 @@ class GroceryItemTile extends StatelessWidget {
                                 ],
                               ),
                             ],
+                            // ── Pantry shortage note ──────────────────
+                            if (item.pantryShortageAmount != null &&
+                                !item.isChecked) ...[
+                              const SizedBox(height: 3),
+                              Row(
+                                children: [
+                                  Icon(Icons.inventory_2_outlined,
+                                      size: 12, color: Colors.orange.shade600),
+                                  const SizedBox(width: 3),
+                                  Flexible(
+                                    child: Text(
+                                      'Pantry shortage: ${item.pantryShortageAmount!.toStringAsFixed(1)} ${item.unit ?? ''}',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: Colors.orange.shade700,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
                           ],
                         ),
                       ),
@@ -142,7 +168,7 @@ class GroceryItemTile extends StatelessWidget {
                                   : const Color(0xFF1A1A1A),
                             ),
                           ),
-                          // Price-per-unit (legacy display for manually added items)
+                          // Price-per-unit (legacy for manually added items)
                           if (item.pricePerUnit(currencySymbol) != null &&
                               item.suggestedPurchaseUnit == null)
                             Text(
@@ -159,28 +185,51 @@ class GroceryItemTile extends StatelessWidget {
                             const SizedBox(height: 3),
                             _PriceSourceBadge(source: item.priceSource!),
                           ],
+
+                          // ── Edit mode: delete + edit buttons ──────────
+                          if (onEdit != null) ...[
+                            const SizedBox(height: 6),
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                // Delete button (left of pencil)
+                                GestureDetector(
+                                  onTap: onDelete,
+                                  child: Container(
+                                    padding: const EdgeInsets.all(6),
+                                    decoration: BoxDecoration(
+                                      color: Colors.red.shade50,
+                                      borderRadius:
+                                      BorderRadius.circular(8),
+                                    ),
+                                    child: Icon(Icons.delete_outline,
+                                        size: 16,
+                                        color: Colors.red.shade600),
+                                  ),
+                                ),
+                                const SizedBox(width: 6),
+                                // Edit (pencil) button
+                                GestureDetector(
+                                  onTap: onEdit,
+                                  child: Container(
+                                    padding: const EdgeInsets.all(6),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFE8F5E9),
+                                      borderRadius:
+                                      BorderRadius.circular(8),
+                                    ),
+                                    child: const Icon(
+                                      Icons.edit_outlined,
+                                      size: 16,
+                                      color: Color(0xFF2E7D32),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
                         ],
                       ),
-
-                      // ── Edit icon (only shown in edit mode) ───────────
-                      if (onEdit != null) ...[
-                        const SizedBox(width: 8),
-                        GestureDetector(
-                          onTap: onEdit,
-                          child: Container(
-                            padding: const EdgeInsets.all(6),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFE8F5E9),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: const Icon(
-                              Icons.edit_outlined,
-                              size: 16,
-                              color: Color(0xFF2E7D32),
-                            ),
-                          ),
-                        ),
-                      ],
                     ],
                   ),
 
@@ -235,10 +284,13 @@ class GroceryItemTile extends StatelessWidget {
       height: 26,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        color: item.isChecked ? const Color(0xFF2E7D32) : Colors.transparent,
+        color: item.isChecked
+            ? const Color(0xFF2E7D32)
+            : Colors.transparent,
         border: Border.all(
-          color:
-          item.isChecked ? const Color(0xFF2E7D32) : Colors.grey.shade400,
+          color: item.isChecked
+              ? const Color(0xFF2E7D32)
+              : Colors.grey.shade400,
           width: 2,
         ),
       ),
@@ -254,7 +306,9 @@ class GroceryItemTile extends StatelessWidget {
       style: TextStyle(
         fontSize: 15,
         fontWeight: FontWeight.w600,
-        color: item.isChecked ? Colors.grey.shade400 : const Color(0xFF1A1A1A),
+        color: item.isChecked
+            ? Colors.grey.shade400
+            : const Color(0xFF1A1A1A),
         decoration: item.isChecked ? TextDecoration.lineThrough : null,
         decorationColor: Colors.grey.shade400,
       ),
@@ -308,14 +362,11 @@ class _PriceSourceBadge extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(icon, size: 10, color: textColor),
-          const SizedBox(width: 2),
+          const SizedBox(width: 3),
           Text(
             label,
             style: TextStyle(
-              fontSize: 10,
-              color: textColor,
-              fontWeight: FontWeight.w600,
-            ),
+                fontSize: 10, color: textColor, fontWeight: FontWeight.w600),
           ),
         ],
       ),
