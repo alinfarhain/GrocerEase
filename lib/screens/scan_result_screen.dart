@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../models/detected_pantry_item.dart';
 import '../../repositories/pantry_repository.dart';
 import '../widgets/detected_item_card.dart';
+import 'pantry_scan_screen.dart';
 
 class ScanResultScreen extends StatefulWidget {
   final List<DetectedPantryItem> detectedItems;
@@ -304,7 +305,12 @@ class _ScanResultScreenState extends State<ScanResultScreen> {
           SizedBox(
             width: double.infinity,
             child: OutlinedButton(
-              onPressed: () => Navigator.pop(context),
+              onPressed: () {
+                Navigator.pushReplacement(
+                  context,
+                  MaterialPageRoute(builder: (_) => const PantryScanScreen()),
+                );
+              },
               style: OutlinedButton.styleFrom(
                 padding: const EdgeInsets.symmetric(vertical: 14),
                 side: BorderSide(color: Colors.grey.shade300),

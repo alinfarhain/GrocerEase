@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../services/recipe_extraction_service.dart';
 import 'full_recipe_detail_page.dart';
+import 'scan_written_recipe_sheet.dart';
 
 class ExtractedRecipeResultPage extends StatefulWidget {
   final ExtractedRecipe recipe;
@@ -266,7 +267,15 @@ class _ExtractedRecipeResultPageState extends State<ExtractedRecipeResultPage> {
             SizedBox(
               width: double.infinity,
               child: OutlinedButton.icon(
-                onPressed: () => Navigator.pop(context),
+                onPressed: () {
+                  Navigator.pop(context);
+                  showModalBottomSheet(
+                    context: context,
+                    isScrollControlled: true,
+                    backgroundColor: Colors.transparent,
+                    builder: (_) => const ScanWrittenRecipeSheet(),
+                  );
+                },
                 icon: const Icon(Icons.refresh),
                 label: const Text('Scan Again'),
                 style: OutlinedButton.styleFrom(
