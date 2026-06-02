@@ -66,7 +66,38 @@ class _PlanPageState extends State<PlanPage> {
 
   // ── DELETE ────────────────────────────────────────────────────────────────
 
+  // With confirmation dialog — for delete button taps
   Future<void> _deleteMeal(String dateKey, int index) async {
+    final meal = _mealPlan[dateKey]?[index];
+    if (meal == null) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16)),
+        title: const Text('Delete Meal'),
+        content: Text(
+            'Are you sure you want to delete "${meal.title}" from your plan?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Delete',
+                style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    await _deleteMealDirect(dateKey, index);
+  }
+
+  // Without dialog — called after swipe confirmDismiss confirms
+  Future<void> _deleteMealDirect(String dateKey, int index) async {
     final meal = _mealPlan[dateKey]?[index];
     if (meal == null) return;
 
@@ -84,7 +115,8 @@ class _PlanPageState extends State<PlanPage> {
             _mealPlan.putIfAbsent(dateKey, () => []).insert(index, meal);
           });
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Failed to delete meal. Please try again.')),
+            const SnackBar(
+                content: Text('Failed to delete meal. Please try again.')),
           );
         }
       }
@@ -104,7 +136,6 @@ class _PlanPageState extends State<PlanPage> {
     if (meal.id == null) return;
     final newDateKey = DateFormat('yyyy-MM-dd').format(newDate);
 
-    // Build the updated Meal for optimistic UI
     final updatedMeal = Meal(
       id: meal.id,
       title: meal.title,
@@ -117,7 +148,6 @@ class _PlanPageState extends State<PlanPage> {
       originalData: meal.originalData,
     );
 
-    // Optimistic update
     setState(() {
       final list = _mealPlan[oldDateKey];
       if (list != null && index < list.length) {
@@ -144,7 +174,6 @@ class _PlanPageState extends State<PlanPage> {
         );
       }
     } catch (e) {
-      // Rollback
       if (mounted) {
         _loadMealPlan();
         ScaffoldMessenger.of(context).showSnackBar(
@@ -183,7 +212,6 @@ class _PlanPageState extends State<PlanPage> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    // Handle
                     const SizedBox(height: 12),
                     Container(
                       width: 40,
@@ -215,198 +243,204 @@ class _PlanPageState extends State<PlanPage> {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                const Text('Edit Plan',
+                                const Text('Edit Meal Plan',
                                     style: TextStyle(
+                                        fontSize: 18,
                                         fontWeight: FontWeight.bold,
-                                        fontSize: 18)),
-                                Text(
-                                  meal.title,
-                                  style: const TextStyle(
-                                      color: Colors.grey, fontSize: 13),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
+                                        color: Color(0xFF003D33))),
+                                Text(meal.title,
+                                    style: const TextStyle(
+                                        fontSize: 13, color: Colors.grey),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis),
                               ],
                             ),
                           ),
-                          GestureDetector(
-                            onTap: () => Navigator.pop(context),
-                            child: Container(
-                              width: 32,
-                              height: 32,
-                              decoration: BoxDecoration(
-                                color: Colors.grey[100],
-                                shape: BoxShape.circle,
-                              ),
-                              child: const Icon(Icons.close, size: 18),
-                            ),
+                          IconButton(
+                            onPressed: () {
+                              Navigator.pop(context);
+                              customCatController.dispose();
+                            },
+                            icon: const Icon(Icons.close),
+                            style: IconButton.styleFrom(
+                                backgroundColor: Colors.grey[100]),
                           ),
                         ],
                       ),
                     ),
-                    const SizedBox(height: 24),
 
-                    // Scrollable body
-                    Flexible(
-                      child: SingleChildScrollView(
-                        padding: const EdgeInsets.symmetric(horizontal: 24),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            // Date
-                            const Text('Select Date',
-                                style: TextStyle(
-                                    fontWeight: FontWeight.bold, fontSize: 16)),
-                            const SizedBox(height: 12),
-                            GestureDetector(
-                              onTap: () async {
-                                final picked = await showDatePicker(
-                                  context: context,
-                                  initialDate: selectedDate,
-                                  firstDate: DateTime(2020),
-                                  lastDate: DateTime(2030),
-                                  builder: (context, child) => Theme(
-                                    data: Theme.of(context).copyWith(
-                                      colorScheme: const ColorScheme.light(
-                                          primary: Color(0xFF1DB954)),
+                    // Scrollable content
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(24, 20, 24, 32),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Date selector
+                          const Text('Select Date',
+                              style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 15,
+                                  color: Color(0xFF003D33))),
+                          const SizedBox(height: 12),
+                          GestureDetector(
+                            onTap: () async {
+                              final picked = await showDatePicker(
+                                context: context,
+                                initialDate: selectedDate,
+                                firstDate: DateTime.now()
+                                    .subtract(const Duration(days: 365)),
+                                lastDate: DateTime(2101),
+                                builder: (context, child) => Theme(
+                                  data: Theme.of(context).copyWith(
+                                    colorScheme: const ColorScheme.light(
+                                      primary: Color(0xFF1DB954),
+                                      onPrimary: Colors.white,
+                                      onSurface: Color(0xFF003D33),
                                     ),
-                                    child: child!,
                                   ),
-                                );
-                                if (picked != null) {
-                                  setModalState(() => selectedDate = picked);
-                                }
-                              },
-                              child: Container(
-                                padding: const EdgeInsets.all(16),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFFE8F5E9),
-                                  borderRadius: BorderRadius.circular(14),
+                                  child: child!,
                                 ),
-                                child: Row(
-                                  children: [
-                                    const Icon(Icons.calendar_month_outlined,
-                                        color: Color(0xFF1DB954)),
-                                    const SizedBox(width: 12),
-                                    Expanded(
-                                      child: Text(
-                                        DateFormat('d/M/yyyy — EEEE')
-                                            .format(selectedDate),
-                                        style: const TextStyle(
-                                            fontWeight: FontWeight.w600),
-                                      ),
+                              );
+                              if (picked != null) {
+                                setModalState(() => selectedDate = picked);
+                              }
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 16, vertical: 14),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFF7FFF9),
+                                borderRadius: BorderRadius.circular(14),
+                                border: Border.all(
+                                    color: const Color(0xFF1DB954)
+                                        .withOpacity(0.4)),
+                              ),
+                              child: Row(
+                                children: [
+                                  const Icon(Icons.calendar_month_outlined,
+                                      color: Color(0xFF1DB954), size: 20),
+                                  const SizedBox(width: 12),
+                                  Text(
+                                    '${selectedDate.day}/${selectedDate.month}/${selectedDate.year}',
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                      color: Color(0xFF003D33),
+                                      fontSize: 14,
                                     ),
-                                    const Icon(Icons.edit_outlined,
-                                        color: Colors.grey, size: 18),
-                                  ],
-                                ),
+                                  ),
+                                  const Spacer(),
+                                  Icon(Icons.edit_outlined,
+                                      size: 16, color: Colors.grey[400]),
+                                ],
                               ),
                             ),
-                            const SizedBox(height: 24),
+                          ),
+                          const SizedBox(height: 20),
 
-                            // Category
-                            const Text('Meal Category',
-                                style: TextStyle(
-                                    fontWeight: FontWeight.bold, fontSize: 16)),
-                            const SizedBox(height: 12),
-                            Wrap(
-                              spacing: 10,
-                              runSpacing: 10,
-                              children: [
-                                'Breakfast',
-                                'Lunch',
-                                'Dinner',
-                                'High Tea',
-                                'Custom',
-                              ].map((cat) {
-                                final isSelected = selectedCategory == cat;
-                                return GestureDetector(
-                                  onTap: () => setModalState(
-                                          () => selectedCategory = cat),
-                                  child: AnimatedContainer(
-                                    duration: const Duration(milliseconds: 200),
-                                    padding: const EdgeInsets.symmetric(
-                                        horizontal: 16, vertical: 10),
-                                    decoration: BoxDecoration(
+                          // Meal Category
+                          const Text('Meal Category',
+                              style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 15,
+                                  color: Color(0xFF003D33))),
+                          const SizedBox(height: 10),
+                          Wrap(
+                            spacing: 10,
+                            runSpacing: 10,
+                            children: [
+                              'Breakfast',
+                              'Lunch',
+                              'Dinner',
+                              'High Tea',
+                              'Custom',
+                            ].map((cat) {
+                              final isSelected = selectedCategory == cat;
+                              return GestureDetector(
+                                onTap: () =>
+                                    setModalState(() => selectedCategory = cat),
+                                child: AnimatedContainer(
+                                  duration: const Duration(milliseconds: 180),
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 16, vertical: 10),
+                                  decoration: BoxDecoration(
+                                    color: isSelected
+                                        ? const Color(0xFFE8F5E9)
+                                        : Colors.grey[100],
+                                    borderRadius: BorderRadius.circular(20),
+                                    border: Border.all(
                                       color: isSelected
-                                          ? const Color(0xFFE8F5E9)
-                                          : Colors.grey[100],
-                                      borderRadius: BorderRadius.circular(20),
-                                      border: Border.all(
-                                        color: isSelected
-                                            ? const Color(0xFF1DB954)
-                                            : Colors.grey[300]!,
-                                        width: isSelected ? 1.5 : 1,
-                                      ),
+                                          ? const Color(0xFF1DB954)
+                                          : Colors.grey[300]!,
+                                      width: isSelected ? 1.5 : 1,
                                     ),
-                                    child: Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        if (isSelected) ...[
-                                          const Icon(Icons.check,
-                                              size: 14,
-                                              color: Color(0xFF1DB954)),
-                                          const SizedBox(width: 4),
-                                        ],
-                                        Text(
-                                          cat,
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      if (isSelected) ...[
+                                        const Icon(Icons.check,
+                                            size: 14,
+                                            color: Color(0xFF1DB954)),
+                                        const SizedBox(width: 4),
+                                      ],
+                                      Text(cat,
                                           style: TextStyle(
                                             color: isSelected
                                                 ? const Color(0xFF1DB954)
                                                 : Colors.black87,
                                             fontWeight: isSelected
-                                                ? FontWeight.bold
+                                                ? FontWeight.w600
                                                 : FontWeight.normal,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                );
-                              }).toList(),
-                            ),
-                            if (selectedCategory == 'Custom') ...[
-                              const SizedBox(height: 12),
-                              TextField(
-                                controller: customCatController,
-                                decoration: InputDecoration(
-                                  hintText: 'e.g. Pre-workout, Supper...',
-                                  filled: true,
-                                  fillColor: Colors.grey[100],
-                                  border: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                    borderSide: BorderSide.none,
+                                            fontSize: 13,
+                                          )),
+                                    ],
                                   ),
                                 ),
-                              ),
-                            ],
-                            const SizedBox(height: 28),
+                              );
+                            }).toList(),
+                          ),
 
-                            // Update button
-                            _buildConfirmButton(
-                              isSaving: isSaving,
-                              isEnabled: true,
-                              label: 'Update Plan',
-                              onConfirm: () async {
-                                setModalState(() => isSaving = true);
-                                final customName = selectedCategory == 'Custom'
-                                    ? customCatController.text.trim()
-                                    : null;
-                                customCatController.dispose();
-                                Navigator.pop(context);
-                                await _editMeal(
-                                  meal: meal,
-                                  oldDateKey: dateKey,
-                                  index: index,
-                                  newDate: selectedDate,
-                                  newCategory: selectedCategory,
-                                  newCustomCategory: customName,
-                                );
-                              },
+                          if (selectedCategory == 'Custom') ...[
+                            const SizedBox(height: 14),
+                            TextField(
+                              controller: customCatController,
+                              autofocus: true,
+                              decoration: InputDecoration(
+                                hintText: 'e.g. Pre-workout, Supper...',
+                                filled: true,
+                                fillColor: Colors.grey[100],
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                  borderSide: BorderSide.none,
+                                ),
+                              ),
                             ),
-                            const SizedBox(height: 24),
                           ],
-                        ),
+                          const SizedBox(height: 28),
+
+                          _buildConfirmButton(
+                            isSaving: isSaving,
+                            isEnabled: true,
+                            label: 'Update Plan',
+                            onConfirm: () async {
+                              setModalState(() => isSaving = true);
+                              final customName = selectedCategory == 'Custom'
+                                  ? customCatController.text.trim()
+                                  : null;
+                              customCatController.dispose();
+                              Navigator.pop(context);
+                              await _editMeal(
+                                meal: meal,
+                                oldDateKey: dateKey,
+                                index: index,
+                                newDate: selectedDate,
+                                newCategory: selectedCategory,
+                                newCustomCategory: customName,
+                              );
+                            },
+                          ),
+                          const SizedBox(height: 24),
+                        ],
                       ),
                     ),
                   ],
@@ -472,7 +506,8 @@ class _PlanPageState extends State<PlanPage> {
                 ),
                 decoration: const BoxDecoration(
                   color: Colors.white,
-                  borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+                  borderRadius:
+                  BorderRadius.vertical(top: Radius.circular(28)),
                 ),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
@@ -510,47 +545,44 @@ class _PlanPageState extends State<PlanPage> {
                               children: [
                                 const Text('Add to Plan',
                                     style: TextStyle(
+                                        fontSize: 18,
                                         fontWeight: FontWeight.bold,
-                                        fontSize: 18)),
+                                        color: Color(0xFF003D33))),
                                 Text(
-                                  DateFormat('EEEE, MMM d').format(date),
-                                  style: const TextStyle(
-                                      color: Colors.grey, fontSize: 13),
-                                ),
+                                    DateFormat('EEEE, MMMM d').format(date),
+                                    style: const TextStyle(
+                                        fontSize: 13, color: Colors.grey)),
                               ],
                             ),
                           ),
-                          GestureDetector(
-                            onTap: () {
+                          IconButton(
+                            onPressed: () {
                               customCatController.dispose();
                               Navigator.pop(context);
                             },
-                            child: Container(
-                              width: 32,
-                              height: 32,
-                              decoration: BoxDecoration(
-                                color: Colors.grey[100],
-                                shape: BoxShape.circle,
-                              ),
-                              child: const Icon(Icons.close, size: 18),
-                            ),
+                            icon: const Icon(Icons.close),
+                            style: IconButton.styleFrom(
+                                backgroundColor: Colors.grey[100]),
                           ),
                         ],
                       ),
                     ),
-                    const SizedBox(height: 24),
+                    const SizedBox(height: 16),
 
-                    Flexible(
+                    // Scrollable content
+                    Expanded(
                       child: SingleChildScrollView(
-                        padding: const EdgeInsets.symmetric(horizontal: 24),
+                        padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            // Meal Category
+                            // Category selector
                             const Text('Meal Category',
                                 style: TextStyle(
-                                    fontWeight: FontWeight.bold, fontSize: 16)),
-                            const SizedBox(height: 12),
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 15,
+                                    color: Color(0xFF003D33))),
+                            const SizedBox(height: 10),
                             Wrap(
                               spacing: 10,
                               runSpacing: 10,
@@ -566,14 +598,16 @@ class _PlanPageState extends State<PlanPage> {
                                   onTap: () => setModalState(
                                           () => selectedCategory = cat),
                                   child: AnimatedContainer(
-                                    duration: const Duration(milliseconds: 200),
+                                    duration:
+                                    const Duration(milliseconds: 180),
                                     padding: const EdgeInsets.symmetric(
                                         horizontal: 16, vertical: 10),
                                     decoration: BoxDecoration(
                                       color: isSelected
                                           ? const Color(0xFFE8F5E9)
                                           : Colors.grey[100],
-                                      borderRadius: BorderRadius.circular(20),
+                                      borderRadius:
+                                      BorderRadius.circular(20),
                                       border: Border.all(
                                         color: isSelected
                                             ? const Color(0xFF1DB954)
@@ -590,17 +624,16 @@ class _PlanPageState extends State<PlanPage> {
                                               color: Color(0xFF1DB954)),
                                           const SizedBox(width: 4),
                                         ],
-                                        Text(
-                                          cat,
-                                          style: TextStyle(
-                                            color: isSelected
-                                                ? const Color(0xFF1DB954)
-                                                : Colors.black87,
-                                            fontWeight: isSelected
-                                                ? FontWeight.bold
-                                                : FontWeight.normal,
-                                          ),
-                                        ),
+                                        Text(cat,
+                                            style: TextStyle(
+                                              color: isSelected
+                                                  ? const Color(0xFF1DB954)
+                                                  : Colors.black87,
+                                              fontWeight: isSelected
+                                                  ? FontWeight.w600
+                                                  : FontWeight.normal,
+                                              fontSize: 13,
+                                            )),
                                       ],
                                     ),
                                   ),
@@ -611,6 +644,7 @@ class _PlanPageState extends State<PlanPage> {
                               const SizedBox(height: 12),
                               TextField(
                                 controller: customCatController,
+                                autofocus: true,
                                 decoration: InputDecoration(
                                   hintText: 'e.g. Pre-workout, Supper...',
                                   filled: true,
@@ -622,42 +656,40 @@ class _PlanPageState extends State<PlanPage> {
                                 ),
                               ),
                             ],
-                            const SizedBox(height: 24),
+                            const SizedBox(height: 20),
 
-                            // Recipe search
-                            const Text('Select Recipe',
-                                style: TextStyle(
-                                    fontWeight: FontWeight.bold, fontSize: 16)),
-                            const SizedBox(height: 12),
-                            Container(
-                              height: 44,
-                              decoration: BoxDecoration(
-                                color: Colors.grey[100],
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: Row(
-                                children: [
-                                  const SizedBox(width: 12),
-                                  const Icon(Icons.search,
-                                      color: Colors.grey, size: 20),
-                                  const SizedBox(width: 8),
-                                  Expanded(
-                                    child: TextField(
-                                      onChanged: (v) =>
-                                          setModalState(() => searchText = v),
-                                      decoration: const InputDecoration(
-                                        hintText: 'Search recipes...',
-                                        border: InputBorder.none,
-                                        hintStyle: TextStyle(
-                                            color: Colors.grey, fontSize: 14),
-                                      ),
-                                    ),
-                                  ),
-                                ],
+                            // Search field
+                            TextField(
+                              onChanged: (v) =>
+                                  setModalState(() => searchText = v),
+                              decoration: InputDecoration(
+                                hintText: 'Search your recipes...',
+                                prefixIcon: const Icon(Icons.search,
+                                    color: Colors.grey),
+                                filled: true,
+                                fillColor: Colors.grey[50],
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                  borderSide:
+                                  BorderSide(color: Colors.grey[200]!),
+                                ),
+                                enabledBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                  borderSide:
+                                  BorderSide(color: Colors.grey[200]!),
+                                ),
+                                focusedBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                  borderSide: const BorderSide(
+                                      color: Color(0xFF1DB954), width: 1.5),
+                                ),
+                                contentPadding: const EdgeInsets.symmetric(
+                                    vertical: 12),
                               ),
                             ),
                             const SizedBox(height: 12),
 
+                            // Recipe list
                             if (isLoadingRecipes)
                               const Center(
                                 child: Padding(
@@ -708,6 +740,7 @@ class _PlanPageState extends State<PlanPage> {
                                                 recipe['name'] ?? '',
                                                 style: TextStyle(
                                                   fontWeight: FontWeight.w600,
+                                                  fontSize: 14,
                                                   color: isSelected
                                                       ? const Color(0xFF1DB954)
                                                       : const Color(
@@ -746,10 +779,10 @@ class _PlanPageState extends State<PlanPage> {
                                 final recipe =
                                 visibleRecipes[selectedRecipeIndex!];
                                 setModalState(() => isSaving = true);
-                                final customName = selectedCategory == 'Custom'
+                                final customName =
+                                selectedCategory == 'Custom'
                                     ? customCatController.text.trim()
                                     : null;
-
                                 try {
                                   final newMeal =
                                   await MealPlanService.addMealPlan(
@@ -758,7 +791,6 @@ class _PlanPageState extends State<PlanPage> {
                                     customCategoryName: customName,
                                     recipe: recipe,
                                   );
-
                                   if (mounted) {
                                     setState(() {
                                       _mealPlan
@@ -766,7 +798,6 @@ class _PlanPageState extends State<PlanPage> {
                                           .add(newMeal);
                                     });
                                   }
-
                                   customCatController.dispose();
                                   if (context.mounted) Navigator.pop(context);
                                 } catch (e) {
@@ -783,7 +814,6 @@ class _PlanPageState extends State<PlanPage> {
                                 }
                               },
                             ),
-                            const SizedBox(height: 24),
                           ],
                         ),
                       ),
@@ -851,9 +881,10 @@ class _PlanPageState extends State<PlanPage> {
         onPressed: () => ScanPage.show(context),
         backgroundColor: const Color(0xFFFF7043),
         elevation: 4.0,
-        shape:
-        RoundedRectangleBorder(borderRadius: BorderRadius.circular(20.0)),
-        child: const Icon(Icons.qr_code_scanner, color: Colors.white, size: 28.0),
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20.0)),
+        child: const Icon(Icons.qr_code_scanner,
+            color: Colors.white, size: 28.0),
       ),
     );
   }
@@ -874,7 +905,7 @@ class _PlanPageState extends State<PlanPage> {
               style: TextStyle(fontSize: 14, color: Colors.grey)),
           const SizedBox(height: 24),
 
-          // Meal Plan | My Recipes top tabs
+          // Meal Plan | My Recipes tabs
           Container(
             height: 50,
             padding: const EdgeInsets.all(4),
@@ -910,48 +941,46 @@ class _PlanPageState extends State<PlanPage> {
               ElevatedButton.icon(
                 onPressed: () => setState(() => isEditing = !isEditing),
                 icon: Icon(
-                    isEditing ? Icons.check : Icons.edit_outlined, size: 18),
+                  isEditing ? Icons.check : Icons.edit_outlined,
+                  size: 16,
+                ),
                 label: Text(isEditing ? 'Done' : 'Edit'),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor:
-                  isEditing ? const Color(0xFF1DB954) : Colors.white,
-                  foregroundColor:
-                  isEditing ? Colors.white : const Color(0xFF003D33),
+                  backgroundColor: isEditing
+                      ? const Color(0xFF1DB954)
+                      : const Color(0xFFE8F5E9),
+                  foregroundColor: isEditing
+                      ? Colors.white
+                      : const Color(0xFF003D33),
                   elevation: 0,
                   shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12)),
+                      borderRadius: BorderRadius.circular(20)),
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 16, vertical: 10),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 20),
 
-          // Weekly / Monthly toggle
+          // Weekly | Monthly toggle
           Container(
             height: 44,
             padding: const EdgeInsets.all(4),
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: const Color(0xFFE0E0E0).withOpacity(0.3),
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.grey[200]!),
             ),
             child: Row(
               children: [
-                _buildViewTab(
-                  icon: Icons.calendar_today_outlined,
-                  label: 'Weekly',
-                  isSelected: isWeeklyView,
-                  onTap: () => setState(() => isWeeklyView = true),
-                ),
-                _buildViewTab(
-                  icon: Icons.grid_view_outlined,
-                  label: 'Monthly',
-                  isSelected: !isWeeklyView,
-                  onTap: () => setState(() => isWeeklyView = false),
-                ),
+                _buildViewTab('Weekly', Icons.calendar_today_outlined,
+                    isWeeklyView, () => setState(() => isWeeklyView = true)),
+                _buildViewTab('Monthly', Icons.grid_view_outlined,
+                    !isWeeklyView, () => setState(() => isWeeklyView = false)),
               ],
             ),
           ),
+          const SizedBox(height: 16),
         ],
       ),
     );
@@ -960,11 +989,19 @@ class _PlanPageState extends State<PlanPage> {
   Widget _buildTopTab(String label, bool isSelected, {VoidCallback? onTap}) {
     return Expanded(
       child: GestureDetector(
-        onTap: onTap,
+        onTap: onTap ?? () {},
         child: Container(
           decoration: BoxDecoration(
             color: isSelected ? Colors.white : Colors.transparent,
             borderRadius: BorderRadius.circular(8),
+            boxShadow: isSelected
+                ? [
+              BoxShadow(
+                  color: Colors.black.withOpacity(0.05),
+                  blurRadius: 4,
+                  offset: const Offset(0, 1))
+            ]
+                : null,
           ),
           alignment: Alignment.center,
           child: Text(
@@ -979,21 +1016,25 @@ class _PlanPageState extends State<PlanPage> {
     );
   }
 
-  Widget _buildViewTab({
-    required IconData icon,
-    required String label,
-    required bool isSelected,
-    required VoidCallback onTap,
-  }) {
+  Widget _buildViewTab(
+      String label, IconData icon, bool isSelected, VoidCallback onTap) {
     return Expanded(
       child: GestureDetector(
         onTap: onTap,
-        child: Container(
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          margin: const EdgeInsets.all(4),
           decoration: BoxDecoration(
-            color: isSelected
-                ? const Color(0xFFE8F5E9)
-                : Colors.transparent,
+            color: isSelected ? Colors.white : Colors.transparent,
             borderRadius: BorderRadius.circular(8),
+            boxShadow: isSelected
+                ? [
+              BoxShadow(
+                  color: Colors.black.withOpacity(0.06),
+                  blurRadius: 4,
+                  offset: const Offset(0, 1))
+            ]
+                : null,
           ),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -1004,16 +1045,15 @@ class _PlanPageState extends State<PlanPage> {
                       ? const Color(0xFF003D33)
                       : Colors.grey),
               const SizedBox(width: 6),
-              Text(
-                label,
-                style: TextStyle(
-                  fontWeight: FontWeight.w600,
-                  fontSize: 13,
-                  color: isSelected
-                      ? const Color(0xFF003D33)
-                      : Colors.grey,
-                ),
-              ),
+              Text(label,
+                  style: TextStyle(
+                    fontWeight:
+                    isSelected ? FontWeight.w600 : FontWeight.w400,
+                    fontSize: 13,
+                    color: isSelected
+                        ? const Color(0xFF003D33)
+                        : Colors.grey,
+                  )),
             ],
           ),
         ),
@@ -1062,6 +1102,7 @@ class _PlanPageState extends State<PlanPage> {
                 isEditing: isEditing,
                 onAddMeal: () => _showAddMealSheet(date),
                 onDeleteMeal: (idx) => _deleteMeal(dateKey, idx),
+                onDeleteMealDirect: (idx) => _deleteMealDirect(dateKey, idx),
                 onEditMeal: (meal, idx) =>
                     _showEditMealSheet(meal, dateKey, idx),
                 onMealTap: (meal) {
@@ -1126,7 +1167,8 @@ class _PlanPageState extends State<PlanPage> {
       onPressed: onTap,
       icon: Icon(icon, color: const Color(0xFF003D33)),
       style: IconButton.styleFrom(
-          backgroundColor: Colors.grey[100], minimumSize: const Size(40, 40)),
+          backgroundColor: Colors.grey[100],
+          minimumSize: const Size(40, 40)),
     );
   }
 }
@@ -1141,6 +1183,7 @@ class DayContainer extends StatelessWidget {
   final bool isEditing;
   final VoidCallback onAddMeal;
   final void Function(int index) onDeleteMeal;
+  final void Function(int index) onDeleteMealDirect;
   final void Function(Meal meal, int index) onEditMeal;
   final void Function(Meal meal) onMealTap;
 
@@ -1151,6 +1194,7 @@ class DayContainer extends StatelessWidget {
     required this.isEditing,
     required this.onAddMeal,
     required this.onDeleteMeal,
+    required this.onDeleteMealDirect,
     required this.onEditMeal,
     required this.onMealTap,
   });
@@ -1193,7 +1237,8 @@ class DayContainer extends StatelessWidget {
                     style: TextStyle(
                       fontSize: 11,
                       fontWeight: FontWeight.w600,
-                      color: isToday ? Colors.white : const Color(0xFF003D33),
+                      color:
+                      isToday ? Colors.white : const Color(0xFF003D33),
                     ),
                   ),
                   const SizedBox(height: 2),
@@ -1202,7 +1247,8 @@ class DayContainer extends StatelessWidget {
                     style: TextStyle(
                       fontSize: 20,
                       fontWeight: FontWeight.bold,
-                      color: isToday ? Colors.white : const Color(0xFF003D33),
+                      color:
+                      isToday ? Colors.white : const Color(0xFF003D33),
                     ),
                   ),
                 ],
@@ -1222,7 +1268,8 @@ class DayContainer extends StatelessWidget {
                       final idx = e.key;
                       final meal = e.value;
                       return Dismissible(
-                        key: ValueKey(meal.id ?? '${date.toIso8601String()}-$idx'),
+                        key: ValueKey(
+                            meal.id ?? '${date.toIso8601String()}-$idx'),
                         direction: isEditing
                             ? DismissDirection.endToStart
                             : DismissDirection.none,
@@ -1237,7 +1284,34 @@ class DayContainer extends StatelessWidget {
                           child: const Icon(Icons.delete_outline,
                               color: Colors.white, size: 24),
                         ),
-                        onDismissed: (_) => onDeleteMeal(idx),
+                        confirmDismiss: (_) async {
+                          return await showDialog<bool>(
+                            context: context,
+                            builder: (ctx) => AlertDialog(
+                              shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(16)),
+                              title: const Text('Delete Meal'),
+                              content: Text(
+                                  'Are you sure you want to delete "${meal.title}" from your plan?'),
+                              actions: [
+                                TextButton(
+                                  onPressed: () =>
+                                      Navigator.pop(ctx, false),
+                                  child: const Text('Cancel'),
+                                ),
+                                TextButton(
+                                  onPressed: () =>
+                                      Navigator.pop(ctx, true),
+                                  child: const Text('Delete',
+                                      style:
+                                      TextStyle(color: Colors.red)),
+                                ),
+                              ],
+                            ),
+                          ) ??
+                              false;
+                        },
+                        onDismissed: (_) => onDeleteMealDirect(idx),
                         child: MealEntry(
                           meal: meal,
                           isEditing: isEditing,
@@ -1307,12 +1381,15 @@ class DayContainer extends StatelessWidget {
           children: [
             Icon(Icons.add,
                 size: 18,
-                color: isEditing ? const Color(0xFF1DB954) : Colors.grey[400]),
+                color: isEditing
+                    ? const Color(0xFF1DB954)
+                    : Colors.grey[400]),
             const SizedBox(width: 6),
             Text(
               'Plan a meal',
               style: TextStyle(
-                color: isEditing ? const Color(0xFF1DB954) : Colors.grey[400],
+                color:
+                isEditing ? const Color(0xFF1DB954) : Colors.grey[400],
                 fontWeight: FontWeight.bold,
               ),
             ),
@@ -1353,31 +1430,25 @@ class MealEntry extends StatelessWidget {
       onTap: isEditing ? null : onTap,
       child: Container(
         margin: const EdgeInsets.only(bottom: 10),
-        padding: const EdgeInsets.all(14),
+        padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: const Color(0xFFF9FFF9),
+          color: Colors.white,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: const Color(0xFFE0F5E0)),
+          border: Border.all(color: Colors.grey[200]!),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.03),
+              blurRadius: 6,
+              offset: const Offset(0, 2),
+            ),
+          ],
         ),
         child: Row(
           children: [
-            // Category colour dot
-            Container(
-              width: 8,
-              height: 8,
-              decoration: BoxDecoration(
-                color: _categoryColour(meal.mealType),
-                shape: BoxShape.circle,
-              ),
-            ),
-            const SizedBox(width: 10),
-
-            // Meal info
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Badge
                   Container(
                     padding: const EdgeInsets.symmetric(
                         horizontal: 8, vertical: 3),
@@ -1394,19 +1465,34 @@ class MealEntry extends StatelessWidget {
                       ),
                     ),
                   ),
-                  const SizedBox(height: 4),
-                  Text(
-                    meal.title,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 14,
-                      color: Color(0xFF003D33),
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+                  const SizedBox(height: 6),
+                  Row(
+                    children: [
+                      Container(
+                        width: 8,
+                        height: 8,
+                        decoration: BoxDecoration(
+                          color: _categoryColour(meal.mealType),
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          meal.title,
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFF003D33),
+                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
                   ),
                   if (meal.calories > 0 || meal.servings > 0) ...[
-                    const SizedBox(height: 2),
+                    const SizedBox(height: 4),
                     Text(
                       '${meal.calories > 0 ? '${meal.calories} kcal' : ''}'
                           '${meal.calories > 0 && meal.servings > 0 ? ' · ' : ''}'
@@ -1421,7 +1507,6 @@ class MealEntry extends StatelessWidget {
 
             // Action buttons
             if (isEditing) ...[
-              // Edit button
               GestureDetector(
                 onTap: onEdit,
                 child: Container(
@@ -1435,7 +1520,6 @@ class MealEntry extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 6),
-              // Delete button
               GestureDetector(
                 onTap: onDelete,
                 child: Container(
