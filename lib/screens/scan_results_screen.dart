@@ -654,7 +654,7 @@ class _ScanResultsScreenState extends State<ScanResultsScreen> {
                 const SizedBox(height: 12),
                 SizedBox(
                   width: double.infinity,
-                  child: ElevatedButton.icon(
+                  child: OutlinedButton.icon(
                     onPressed: _isAddingToList
                         ? null
                         : () => _showIngredientSheet(ingredients),
@@ -674,16 +674,13 @@ class _ScanResultsScreenState extends State<ScanResultsScreen> {
                       style: const TextStyle(
                           fontSize: 14, fontWeight: FontWeight.w600),
                     ),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF1BAB52),
-                      foregroundColor: Colors.white,
-                      disabledBackgroundColor:
-                      const Color(0xFF1BAB52).withOpacity(0.4),
-                      disabledForegroundColor: Colors.white70,
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: const Color(0xFF2E7D32),
+                      disabledForegroundColor: Colors.grey,
                       padding: const EdgeInsets.symmetric(vertical: 12),
+                      side: const BorderSide(color: Color(0xFF2E7D32)),
                       shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(10)),
-                      elevation: 0,
                     ),
                   ),
                 ),
@@ -816,6 +813,86 @@ class _ScanResultsScreenState extends State<ScanResultsScreen> {
           }),
         ],
 
+        // ── Ingredients from recipe suggestion ────────────
+        if (suggestions.isNotEmpty) ...[
+          const SizedBox(height: 20),
+          const Text('Ingredients',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+          const SizedBox(height: 8),
+          Builder(builder: (_) {
+            final suggestionIngredients = List<dynamic>.from(
+              (suggestions.first as Map<String, dynamic>)['ingredients']
+              as List<dynamic>? ??
+                  [],
+            );
+            return Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                border: Border.all(color: Colors.grey.shade200),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(Icons.shopping_cart_outlined,
+                          size: 15, color: Colors.grey.shade500),
+                      const SizedBox(width: 6),
+                      Text(
+                        suggestionIngredients.isEmpty
+                            ? 'No ingredients found'
+                            : '${suggestionIngredients.length} ingredient${suggestionIngredients.length != 1 ? 's' : ''} detected',
+                        style: TextStyle(
+                            color: Colors.grey.shade600, fontSize: 13),
+                      ),
+                    ],
+                  ),
+                  if (suggestionIngredients.isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        onPressed: _isAddingToList
+                            ? null
+                            : () =>
+                            _showIngredientSheet(suggestionIngredients),
+                        icon: _isAddingToList
+                            ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Color(0xFF2E7D32)),
+                        )
+                            : const Icon(
+                            Icons.add_shopping_cart_outlined, size: 18),
+                        label: Text(
+                          _isAddingToList
+                              ? 'Checking pantry...'
+                              : 'Add Ingredients to Grocery List',
+                          style: const TextStyle(
+                              fontSize: 14, fontWeight: FontWeight.w600),
+                        ),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: const Color(0xFF2E7D32),
+                          disabledForegroundColor: Colors.grey,
+                          padding:
+                          const EdgeInsets.symmetric(vertical: 12),
+                          side:
+                          const BorderSide(color: Color(0xFF2E7D32)),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10)),
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            );
+          }),
+        ],
+
         const SizedBox(height: 24),
 
         SizedBox(
@@ -931,6 +1008,7 @@ class _ScanIngredientTile extends StatelessWidget {
       value: isSelected,
       onChanged: onChanged,
       activeColor: const Color(0xFF1BAB52),
+      controlAffinity: ListTileControlAffinity.leading,
       contentPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
       title: Row(
         children: [
